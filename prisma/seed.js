@@ -1,76 +1,129 @@
 const { PrismaClient } = require('@prisma/client');
-const bcrypt = require('bcrypt'); // Keeping for now if needed, but using static hash
-
 const prisma = new PrismaClient();
 
 async function main() {
   // Hash for 'password123'
-  const passwordHash = '$2y$10$JitvuaG///Wr4waoPurrWuFcsM5dxaY/58KJ5Bz01cnQ/2ds1o3oq';
+  const passwordHash = '$2b$10$8wKYGAAlFsLB7BRcDYjUfuPUK67Luih/jq3FYijMlh2YT.j5.4P4W';
 
-  // 1. Kaprodi
+  // Cleanup existing data to avoid conflicts
+  await prisma.acaraComment.deleteMany();
+  await prisma.acaraReadStatus.deleteMany();
+  await prisma.acara.deleteMany();
+  await prisma.message.deleteMany();
+  await prisma.chatRoomMember.deleteMany();
+  await prisma.chatRoom.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.staff.deleteMany();
+  await prisma.user.deleteMany();
+
+  // 1. Admin
   await prisma.user.upsert({
-    where: { username: 'kaprodi' },
-    update: {},
-    create: {
-      username: 'kaprodi',
-      email: 'kaprodi@univ.ac.id',
+    where: { email: 'admin@fscv.com' },
+    update: {
+      username: 'admin',
+      role: 'admin',
       password: passwordHash,
-      role: 'kaprodi',
-      dosen: {
+    },
+    create: {
+      username: 'admin',
+      email: 'admin@fscv.com',
+      password: passwordHash,
+      role: 'admin',
+      staff: {
         create: {
-            nip: '198001012005011001',
-            nama: 'Dr. Kaprodi, S.Kom, M.Kom',
-            jabatan: 'Kepala Program Studi'
+            nama: 'Staff FSCV',
+            position: 'Admin'
         }
       }
     },
   });
 
-  // 2. Dosen Pembimbing
+  // 2. Manager
   await prisma.user.upsert({
-    where: { username: 'dosen' },
-    update: {},
-    create: {
-      username: 'dosen',
-      email: 'dosen@univ.ac.id',
+    where: { email: 'manager@fscv.com' },
+    update: {
+      username: 'manager',
+      role: 'manager',
       password: passwordHash,
-      role: 'dosen',
-      dosen: {
+    },
+    create: {
+      username: 'manager',
+      email: 'manager@fscv.com',
+      password: passwordHash,
+      role: 'manager',
+      staff: {
         create: {
-            nip: '198505052010011002',
-            nama: 'Ir. Dosen Pembimbing, M.T',
-            jabatan: 'Lektor'
+            nama: 'Budi Manager',
+            position: 'Manager'
         }
       }
     },
   });
 
-  // 3. Staf
+  // 3. Desain
   await prisma.user.upsert({
-    where: { username: 'staf' },
-    update: {},
-    create: {
-      username: 'staf',
-      email: 'staf@univ.ac.id',
+    where: { email: 'desain@fscv.com' },
+    update: {
+      username: 'desain',
+      role: 'desain',
       password: passwordHash,
-      role: 'staf',
+    },
+    create: {
+      username: 'desain',
+      email: 'desain@fscv.com',
+      password: passwordHash,
+      role: 'desain',
+      staff: {
+        create: {
+            nama: 'Dhandi Designer',
+            position: 'Designer'
+        }
+      }
     },
   });
 
-  // 4. Mahasiswa
+  // 4. Gudang
   await prisma.user.upsert({
-    where: { username: 'mahasiswa' },
-    update: {},
-    create: {
-      username: 'mahasiswa',
-      email: 'mahasiswa@student.univ.ac.id',
+    where: { email: 'gudang@fscv.com' },
+    update: {
+      username: 'gudang',
+      role: 'gudang',
       password: passwordHash,
-      role: 'mahasiswa',
-      mahasiswa: {
+    },
+    create: {
+      username: 'gudang',
+      email: 'gudang@fscv.com',
+      password: passwordHash,
+      role: 'gudang',
+      staff: {
         create: {
-            nim: '4519210001',
-            nama: 'Mahasiswa Berprestasi',
-            jurusan: 'Teknik Informatika'
+            nama: 'Gudang FSCV',
+            position: 'Warehouse'
+        }
+      }
+    },
+  });
+
+  // 5. Customer
+  await prisma.user.upsert({
+    where: { email: 'customer@gmail.com' },
+    update: {
+      username: 'customer',
+      role: 'customer',
+      password: passwordHash,
+    },
+    create: {
+      username: 'customer',
+      email: 'customer@gmail.com',
+      password: passwordHash,
+      role: 'customer',
+      customer: {
+        create: {
+            nama: 'Joni Kustomer',
+            category: 'Futsal',
+            phone: '08123456789',
+            address: 'Jl. Merdeka No. 123, Jakarta',
+            memberSince: '2026'
         }
       }
     },

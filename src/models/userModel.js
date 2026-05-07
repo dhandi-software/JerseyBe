@@ -10,8 +10,8 @@ const findUserByIdentifier = async (identifier) => {
             ]
         },
         include: {
-            mahasiswa: true,
-            dosen: true
+            customer: true,
+            staff: true
         }
     });
 };
@@ -26,28 +26,20 @@ const createUser = async (userData) => {
             password: hashedPassword,
             email,
             role,
-            // Create related profile based on role
-            ...(role === 'MAHASISWA' && {
-                mahasiswa: {
+            ...(role.toLowerCase() === 'customer' && {
+                customer: {
                     create: {
                         nama: name,
-                        nim: otherDetails.nim,
-                        jurusan: otherDetails.jurusan,
-                        userId: undefined // Prisma handles relation
                     }
                 }
             }),
-            ...(role === 'DOSEN' && {
-                dosen: {
+            ...(['desain', 'manager', 'gudang', 'admin'].includes(role.toLowerCase()) && {
+                staff: {
                     create: {
                         nama: name,
-                        nip: otherDetails.nip,
-                        jabatan: otherDetails.jabatan,
-                        userId: undefined
                     }
                 }
             }),
-            // Kaprodi/Staf might not have extra profile yet in schema, just User
         }
     });
 };
@@ -56,4 +48,3 @@ module.exports = {
     findUserByIdentifier,
     createUser
 };
-

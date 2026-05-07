@@ -14,121 +14,57 @@ model User {
   id       Int    @id @default(autoincrement())
   username String @unique
   password String
-  role     String // MAHASISWA, DOSEN, KAPRODI, STAF
+  role     String // customer, desain, gudang, manager, admin
   email    String @unique
 
   // Relations
-  mahasiswa Mahasiswa?
-  dosen     Dosen?
+  customer Customer?
+  staff    Staff?
 
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
   deletedMessages  Message[] @relation("DeletedBy")
 
+  // Designer Assignment
+  assignedOrders   JerseyOrder[] @relation("AssignedDesigner")
+
   // Group Chat Relations
   adminOfRooms    ChatRoom[]       @relation("RoomAdmin")
   chatMemberships ChatRoomMember[]
-  acaraComments   AcaraComment[]
 }
 
-model Mahasiswa {
-  id         Int     @id @default(autoincrement())
-  userId     Int     @unique
-  nim        String  @unique // NPM
-  nama       String
-  jurusan    String
-  tahunMasuk String? // Added field
-  user       User    @relation(fields: [userId], references: [id])
-
-  penilaian      Penilaian[]
-  bimbingan      Bimbingan[]
-  sidang         Sidang[]
-  pengajuanJudul PengajuanJudul[]
-  acaraReadStatuses AcaraReadStatus[]
-}
-
-model Dosen {
-  id      Int    @id @default(autoincrement())
-  userId  Int    @unique
-  nidn    String @unique // Replaced NIP with NIDN
-  nama    String
-  jabatan String // Dosen Reguler, Pejabat Prodi, etc.
-  user    User   @relation(fields: [userId], references: [id])
-
-  penilaian      Penilaian[]
-  bimbingan      Bimbingan[]
-  sidang         Sidang[]
-  pengajuanJudul PengajuanJudul[]
-  acara          Acara[]
-}
-
-model Penilaian {
-  id          Int      @id @default(autoincrement())
-  mahasiswaId Int
-  dosenId     Int
+model Customer {
+  id          Int     @id @default(autoincrement())
+  userId      Int     @unique
+  customerId  String  @unique @default(uuid())
+  nama        String
+  phone       String?
+  address     String?
+  category    String?
+  memberSince String?
   
-  // Penguji 1 (35%, 30%, 35%)
-  p1_k1       Float?
-  p1_k2       Float?
-  p1_k3       Float?
-  p1_total    Float?
-  p1_nama     String?
+  user        User    @relation(fields: [userId], references: [id])
 
-  // Penguji 2 (35%, 30%, 35%)
-  p2_k1       Float?
-  p2_k2       Float?
-  p2_k3       Float?
-  p2_total    Float?
-  p2_nama     String?
-
-  nilaiRataRata Float?
-  keterangan    String?
-  tanggal       DateTime @default(now())
-
-  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  dosen     Dosen     @relation(fields: [dosenId], references: [id])
+  // Relations (Placeholder for future Jersey related models)
 }
 
+model Staff {
+  id        Int     @id @default(autoincrement())
+  userId    Int     @unique
+  staffId   String  @unique @default(uuid())
+  nama      String
+  position  String?
+  
+  user      User    @relation(fields: [userId], references: [id])
 
-model Bimbingan {
-  id                Int       @id @default(autoincrement())
-  mahasiswaId       Int
-  dosenId           Int
-  topik             String
-  catatan           String
-  status            String // ASSIGNED, SUBMITTED, REVISION, APPROVED
-  fileMahasiswa     String? // URL untuk file dari mahasiswa (.docx/.pdf)
-  fileDosen         String? // URL untuk file hasil revisi dari dosen (.docx/.pdf)
-  keteranganProgres String? // Ringkasan progres dari mahasiswa
-  jadwalBimbingan   DateTime? // Tenggat waktu / jadwal dari dosen
-  versi             Int       @default(1)
-  isReadDosen       Boolean   @default(false)
-  parentId          Int? // Referensi ke bimbingan sebelumnya jika ini adalah revisi
-  tanggal           DateTime  @default(now())
-
-  mahasiswa Mahasiswa             @relation(fields: [mahasiswaId], references: [id])
-  dosen     Dosen                 @relation(fields: [dosenId], references: [id])
-  parent    Bimbingan?            @relation("BimbinganHistory", fields: [parentId], references: [id])
-  children  Bimbingan[]           @relation("BimbinganHistory")
-  anotasi   BimbinganAnnotation[]
-}
-
-model BimbinganAnnotation {
-  id          Int      @id @default(autoincrement())
-  bimbinganId Int
-  komentar    String
-  warna       String   @default("#FFFF00") // Warna highlight
-  posisi      Json // Koordinat atau text range (serialized)
-  resolved    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-
-  bimbingan Bimbingan @relation(fields: [bimbinganId], references: [id], onDelete: Cascade)
+  // Relations (Placeholder for future Jersey related models)
 }
 
 model Message {
   id             Int      @id @default(autoincrement())
   content        String?
   attachmentUrl  String?
+  attachmentName String?
   attachmentType String? // 'image', 'document', 'none'
   senderId       Int
   receiverId     Int? // Nullifier if roomId is present
@@ -175,80 +111,33 @@ model ChatRoomMember {
   @@unique([roomId, userId])
 }
 
-model PengajuanJudul {
-  id            Int      @id @default(autoincrement())
-  mahasiswaId   Int
-  dosenId       Int
-  judul         String
-  peminatan     String
-  semester      String
-  tahunAkademik String
-  sksDicapai    String
-  sksNilaiD     String
-  ipk           String
-  batasStudi    String
-  status        String   @default("PENDING") // PENDING, APPROVED, REJECTED, REVISION
-  remarks       String?  // Catatan/komentar dosen saat update status
-  tanggal       DateTime @default(now())
 
-  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  dosen     Dosen     @relation(fields: [dosenId], references: [id])
-}
 
-model Sidang {
-  id                Int       @id @default(autoincrement())
-  mahasiswaId       Int
-  dosenId           Int       // Pembimbing
-  pengujiId         Int?      // Penguji
-  judul             String?
-  tanggalSidang     DateTime?
-  waktuSidang       String?
-  lokasi            String?
-  status            String    @default("MENUNGGU_PERSETUJUAN_PEMBIMBING")
+model JerseyOrder {
+  id             Int                 @id @default(autoincrement())
+  orderId        String              @unique @default(uuid())
+  customerId     Int
+  designerId     Int?
+  status         String              @default("MENUNGGU") // MENUNGGU, DESAIN, LAYOUT, FINISHING, SELESAI
+  totalAmount    Float
+  designNote     String?
+  designUrl      String?
+  paymentUrl     String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   
-  pembimbingApproved Boolean   @default(false)
-  prodiApproved      Boolean   @default(false)
-  catatan           String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id])
-  dosen     Dosen     @relation(fields: [dosenId], references: [id])
+  designer       User?               @relation("AssignedDesigner", fields: [designerId], references: [id])
+  details        JerseyOrderDetail[]
 }
 
-model Acara {
-  id          Int      @id @default(autoincrement())
-  dosenId     Int
-  title       String
-  content     String   // Details of the event/assignment
-  type        String   @default("ASSIGNMENT") // e.g. "ASSIGNMENT", "ANNOUNCEMENT"
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model JerseyOrderDetail {
+  id           Int         @id @default(autoincrement())
+  orderId      Int
+  productId    Int
+  productTitle String
+  playerName   String?
+  playerNumber String?
+  playerSize   String
   
-  dosen       Dosen          @relation(fields: [dosenId], references: [id])
-  comments    AcaraComment[]
-  readBy      AcaraReadStatus[]
-}
-
-model AcaraComment {
-  id        Int      @id @default(autoincrement())
-  acaraId   Int
-  userId    Int
-  content   String
-  createdAt DateTime @default(now())
-
-  acara     Acara    @relation(fields: [acaraId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
-}
-
-model AcaraReadStatus {
-  id          Int      @id @default(autoincrement())
-  acaraId     Int
-  mahasiswaId Int
-  readAt      DateTime @default(now())
-
-  acara     Acara     @relation(fields: [acaraId], references: [id], onDelete: Cascade)
-  mahasiswa Mahasiswa @relation(fields: [mahasiswaId], references: [id], onDelete: Cascade)
-
-  @@unique([acaraId, mahasiswaId])
+  order        JerseyOrder @relation(fields: [orderId], references: [id])
 }

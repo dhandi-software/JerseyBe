@@ -1,18 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const { createMahasiswa, createDosen } = require('../controllers/adminController');
+const { 
+    createCustomer, 
+    createTeamInternal,
+    getUserCountByRole,
+    getUsersByRole,
+    updateUser,
+    deleteUser,
+    getUserById,
+    getDashboardStats,
+    getAllChatCustomers,
+    getDesigners
+} = require('../controllers/adminController');
 
-// In a real app, you should add authentication and authorization middleware here
-// e.g. router.use(verifyToken, verifyAdminRole);
+// Routes updated to use commercial terminology
+router.post('/create-customer', createCustomer);
+router.post('/create-staff', createTeamInternal);
 
-router.post('/create-mahasiswa', createMahasiswa);
-router.post('/create-dosen', createDosen);
-router.get('/users/count', require('../controllers/adminController').getUserCountByRole);
-router.get('/users-role', require('../controllers/adminController').getUsersByRole);
-router.get('/monitoring', require('../controllers/adminController').getMonitoringData);
-router.put('/users/:id', require('../controllers/adminController').updateUser);
-router.delete('/users/:id', require('../controllers/adminController').deleteUser);
-router.get('/users/:id', require('../controllers/adminController').getUserById);
-router.get('/dashboard-stats', require('../controllers/adminController').getDashboardStats);
+router.get('/users/count', getUserCountByRole);
+router.get('/users-role', getUsersByRole);
+router.get('/designers', getDesigners);
+router.get('/dashboard-stats', getDashboardStats);
+router.get('/chat-customers', getAllChatCustomers);
+
+router.get('/users/:id', getUserById);
+router.put('/users/:id', updateUser);
+router.delete('/users/:id', deleteUser);
 
 module.exports = router;

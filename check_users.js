@@ -2,20 +2,16 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  const users = await prisma.user.findMany({
-    include: {
-      dosen: true
-    },
-    take: 20
-  });
-  
-  console.log(JSON.stringify(users.map(u => ({
-    username: u.username,
-    role: u.role,
-    jabatan: u.dosen?.jabatan
-  })), null, 2));
+    const users = await prisma.user.findMany({
+        select: {
+            id: true,
+            username: true,
+            role: true,
+            mahasiswa: { select: { nama: true } },
+            dosen: { select: { nama: true } }
+        }
+    });
+    console.log(JSON.stringify(users, null, 2));
 }
 
-main()
-  .catch(e => console.error(e))
-  .finally(async () => await prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());

@@ -1,112 +1,76 @@
-# Skripsi Backend API Documentation
+# Jersey Baju - Backend
 
-Documentation for the independent Node.js Backend service for Skripsi application.
+Backend service for the Jersey Baju application.
 
-### 💬 Live Chat API
+## 🚀 Getting Started
 
-| Method | Endpoint | Description | Request Body |
-| :--- | :--- | :--- | :--- |
-| **POST** | `/api/chat/upload` | Upload attachment | `FormData: { file: File }` |
-| **GET** | `/api/chat/history/:userId/:otherUserId` | Get chat history | - |
-| **GET** | `/api/chat/contacts/:userId` | Get contacts with last message | - |
-
-### 🔌 Socket.IO Events
-| Event Name | Direction | Description |
-| :--- | :--- | :--- |
-| `join` | Client -> Server | Join user room |
-| `send_message` | Client -> Server | Send new message |
-| `delete_message` | Client -> Server | Delete for everyone |
-| `delete_message_for_me` | Client -> Server | Delete for me |
-
-## 📚 API Documentation (Extended)
-
-Dokumentasi detail lainnya dapat dilihat di: **[API_DOCUMENTATION.md](./API_DOCUMENTATION.md)**
-
-## 🔐 Authentication Routes
-Base URL: `http://localhost:5000`
-
-| Method | Endpoint | Description | Request Body | Response |
-| :--- | :--- | :--- | :--- | :--- |
-| **POST** | `/api/auth/login` | Authenticate user | `{ "username": "string", "password": "password" }` | `{ "token": "jwt...", "user": { "role": "..." } }` |
-
-## 👥 User Roles
-Currently using database users. Default password for migrated users: **`DhandiAdam`** (or as configured in `.env`).
-
-| Role | Username |
-| :--- | :--- |
-| **Kaprodi** | `kaprodi` |
-| **Dosen Pembimbing** | `dospem` |
-| **Staf Universitas** | `staf` |
-| **Mahasiswa** | `mahasiswa` |
-
-## 🚀 How to Run
+### 📦 Installation
 ```bash
-# Install dependencies
 npm install
+```
 
-# Run database migration (if schema changes)
-npx prisma migrate dev --name init_postgres
-
-# Run development server
+### ⚡ Development
+```bash
 npm run dev
 ```
 
+### 🧪 Database (Prisma)
+```bash
+npx prisma migrate dev
+```
+
+## 💬 Chat API & Socket Documentation
+
+Modul ini mendukung komunikasi real-time menggunakan **Socket.io** dan sinkronisasi data melalui **REST API**.
+
+### 📡 REST API Endpoints
+
+Semua endpoint berikut diawali dengan `/api/chat`.
+
+| Method | Endpoint | Deskripsi |
+| :--- | :--- | :--- |
+| **GET** | `/contacts/:userId` | Mengambil daftar kontak (privat & grup) untuk user tertentu. |
+| **GET** | `/history/:userId/:targetId` | Mengambil riwayat pesan. `targetId` bisa berupa UserId, `public`, atau `group_ID`. |
+| **GET** | `/unread/:userId` | Mengambil total jumlah pesan yang belum dibaca. |
+| **POST** | `/upload` | Mengunggah lampiran (gambar/dokumen). Mengembalikan URL file. |
+| **POST** | `/groups` | Membuat grup chat baru. |
+| **POST** | `/groups/:id/members` | Menambahkan anggota ke dalam grup. |
+| **DELETE** | `/groups/:id/members/:uid` | Mengeluarkan anggota dari grup. |
+| **DELETE** | `/groups/:id` | Menghapus grup chat. |
+
 ---
 
-## 📚 Skripsi Backend API Documentation (Extended)
+### 🔌 Socket.io Events
 
-### 🛠️ Migration Commands
-Perintah migrasi digunakan untuk menyinkronkan perubahan skema (`schema.prisma`) ke database asli.
+Sistem chat menggunakan namespace default. Pastikan klien terhubung dan melakukan `join` segera setelah koneksi berhasil.
 
-**Command:**
-```bash
-npx prisma migrate dev --name <nama_migrasi>
-```
-**Penjelasan `nama_migrasi`:**
-`--name` adalah **label/catatan** untuk riwayat perubahan yang Anda lakukan. Ini seperti memberi judul pada bab buku agar kita tahu apa yang berubah di titik itu.
-- Contoh: `npx prisma migrate dev --name init` (Inisialisasi awal)
-- Contoh: `npx prisma migrate dev --name tambah_tabel_nilai` (Jika nanti menambah tabel nilai)
+#### ⬆️ Client to Server (Emit)
 
-### 🌱 Database Seeding (Isi Data Awal)
-Untuk mengisi database dengan data user bawaan (Kaprodi, Dosen, Staf, Mahasiswa), jalankan perintah:
+| Event | Payload | Deskripsi |
+| :--- | :--- | :--- |
+| `join` | `userId` | Mendaftarkan socket ke room user pribadi, room publik, dan semua grup yang diikuti. |
+| `send_message` | `{ senderId, receiverId?, roomId?, content?, isPublic?, attachmentUrl?, attachmentType?, replyToId? }` | Mengirim pesan baru (Privat, Grup, atau Publik). |
+| `mark_read` | `{ conversationWithId?, roomId?, isPublic?, userId }` | Menandai pesan sebagai telah dibaca dalam percakapan tertentu. |
+| `edit_message` | `{ messageId, newContent }` | Mengubah isi konten pesan yang sudah dikirim. |
+| `delete_message` | `{ messageId }` | Menghapus pesan untuk semua orang (Unsend). |
+| `delete_message_for_me` | `{ messageId, userId }` | Menghapus pesan hanya dari tampilan pengirim. |
 
-**Command:**
-```bash
-npm run seed
-```
-atau manual:
-```bash
-node prisma/seed.js
-```
+#### ⬇️ Server to Client (Listen)
 
-**Data User Bawaan:**
-- Password default: `password`
-- Username: `kaprodi`, `dosen`, `staf`, `mahasiswa`
+| Event | Payload | Deskripsi |
+| :--- | :--- | :--- |
+| `receive_message` | `Message Object` | Diterima saat ada pesan masuk di percakapan aktif atau grup. |
+| `message_sent` | `Message Object` | Konfirmasi ke pengirim bahwa pesan berhasil disimpan di database. |
+| `messages_read` | `{ byUserId }` | Memberitahu pengirim bahwa pesannya telah dibaca oleh penerima. |
+| `message_edited` | `{ messageId, newContent, isEdited }` | Notifikasi saat sebuah pesan diubah isinya. |
+| `message_deleted` | `{ messageId }` | Notifikasi saat sebuah pesan dihapus oleh pengirim. |
+| `group_deleted` | `{ groupId }` | Notifikasi saat grup dibubarkan oleh admin. |
+| `group_member_removed` | `{ groupId }` | Notifikasi saat user dikeluarkan dari sebuah grup. |
 
-### 📝 Penilaian (Assessment) API
+---
 
-| Method | Endpoint | Description | Request Body |
-| :--- | :--- | :--- | :--- |
-| **GET** | `/api/penilaian` | Get all assessment data | - |
-| **POST** | `/api/penilaian` | Create new assessment | `{ "mahasiswaId": 1, "dosenId": 2, "nilai": 85, "keterangan": "Bagus" }` |
-| **GET** | `/api/penilaian/mahasiswa/:id` | Get assessments by Mahasiswa ID | - |
-
-### 🎓 Bimbingan (Guidance) API
-
-| Method | Endpoint | Description | Request Body |
-| :--- | :--- | :--- | :--- |
-| **GET** | `/api/bimbingan` | Get all guidance sessions | - |
-| **POST** | `/api/bimbingan` | Create new guidance session | `{ "mahasiswaId": 1, "dosenId": 2, "topik": "Bab 1", "catatan": "Revisi latar belakang", "status": "PENDING" }` |
-| **GET** | `/api/bimbingan/mahasiswa/:id` | Get guidance sessions by Mahasiswa ID | - |
-
-### 👮 Admin API
-
-| Method | Endpoint | Description | Request Body |
-| :--- | :--- | :--- | :--- |
-| **POST** | `/api/admin/create-mahasiswa` | Create new Mahasiswa account | `{ "email": "...", "password": "...", "nama": "...", "nim": "...", "jurusan": "...", "tahunMasuk": "..." }` |
-| **POST** | `/api/admin/create-dosen` | Create new Dosen account | `{ "email": "...", "password": "...", "nama": "...", "nidn": "...", "jabatan": "..." }` |
-| **PUT** | `/api/admin/users/:id` | Update user account | `{ "email": "...", "name": "...", "role": "...", "nim": "...", "nidn": "...", "jurusan": "...", "tahunMasuk": "...", "jabatan": "..." }` |
-| **DELETE** | `/api/admin/users/:id` | Delete user account | - |
-| **GET** | `/api/admin/users-role?role=...` | Get list of users by role | - |
-| **GET** | `/api/admin/users/count?role=...` | Get count of users by role | - |
-| **GET** | `/api/admin/monitoring` | Get monitoring dashboard data | - |
+## 🛠️ Tech Stack
+- **Framework:** Express.js
+- **Database:** PostgreSQL / SQLite (via Prisma)
+- **Real-time:** Socket.io
+- **ORM:** Prisma

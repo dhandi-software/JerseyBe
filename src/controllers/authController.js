@@ -8,37 +8,31 @@ const login = async (req, res) => {
     const { username, password } = req.body;
 
     try {
-        // 1. Find User by Username OR Email
         const user = await findUserByIdentifier(username);
         if (!user) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // 2. Check Password
         const isValid = await bcrypt.compare(password, user.password);
         
         if (!isValid) {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        // 3. Generate Token
         const token = jwt.sign(
             { id: user.id, username: user.username, role: user.role },
             SECRET_KEY,
             { expiresIn: '30d' }
         );
 
-        // Set HttpOnly Cookie
         res.cookie('token', token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: 'lax',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            maxAge: 30 * 24 * 60 * 60 * 1000 
         });
 
-        // 4. Return Response
-        // Flatten the structure for frontend convenience if needed, or send as is
-        const profileName = user.mahasiswa?.nama || user.dosen?.nama || user.username;
+        const profileName = user.customer?.nama || user.staff?.nama || user.username;
 
         return res.status(200).json({
             message: 'Login successful',
@@ -46,12 +40,11 @@ const login = async (req, res) => {
             user: {
                 id: user.id,
                 username: user.username,
+                email: user.email,
                 name: profileName,
                 role: user.role,
-                // Include profile IDs for easier frontend data fetching
-                mahasiswaId: user.mahasiswa?.id,
-                dosenId: user.dosen?.id,
-                jabatan: user.dosen?.jabatan
+                customerId: user.customer?.id,
+                staffId: user.staff?.id
             }
         });
     } catch (error) {

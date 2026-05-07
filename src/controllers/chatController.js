@@ -5,7 +5,11 @@ exports.uploadAttachment = (req, res) => {
         return res.status(400).json({ message: 'No file uploaded' });
     }
     const fileUrl = `/uploads/${req.file.filename}`;
-    res.json({ url: fileUrl, type: req.file.mimetype });
+    res.json({ 
+        url: fileUrl, 
+        name: req.file.originalname,
+        type: req.file.mimetype 
+    });
 };
 
 exports.getChatHistory = async (req, res) => {
@@ -41,20 +45,20 @@ exports.getChatHistory = async (req, res) => {
                 createdAt: 'asc'
             },
             include: {
-                sender: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
-                receiver: { select: { username: true, role: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } },
+                sender: { select: { username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } },
+                receiver: { select: { username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } },
                 parent: {
                     select: {
                         id: true,
                         content: true,
-                        sender: { select: { username: true, mahasiswa: { select: { nama: true } }, dosen: { select: { nama: true } } } }
+                        sender: { select: { username: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } }
                     }
                 }
             }
         });
 
         const formattedMessages = messages.map(msg => {
-            const formatName = (userObj) => userObj?.mahasiswa?.nama || userObj?.dosen?.nama || userObj?.username;
+            const formatName = (userObj) => userObj?.customer?.nama || userObj?.staff?.nama || userObj?.username;
             return {
                 ...msg,
                 sender: msg.sender ? { ...msg.sender, username: formatName(msg.sender) } : null,
@@ -73,30 +77,37 @@ exports.getChatHistory = async (req, res) => {
 exports.getContacts = async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
+        console.log("Fetching contacts for user:", userId);
         
-        // Find all users except current user
+        const currentUser = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { role: true }
+        });
+
+        const isCustomer = currentUser?.role === 'customer';
+
         const users = await prisma.user.findMany({
             where: {
-                id: { not: userId }
+                id: { not: userId },
+                ...(isCustomer ? { role: { not: 'customer' } } : {})
             },
             select: {
                 id: true,
                 username: true,
                 role: true,
                 email: true,
-                mahasiswa: { select: { nama: true } },
-                dosen:     { select: { nama: true } }
+                customer: { select: { nama: true } },
+                staff:     { select: { nama: true } }
             }
         });
 
         const formattedUsers = users.map(u => ({
             id: u.id,
-            username: u.mahasiswa?.nama || u.dosen?.nama || u.username,
+            username: u.customer?.nama || u.staff?.nama || u.username,
             role: u.role,
             email: u.email
         }));
 
-        // Fetch user's group rooms
         const rooms = await prisma.chatRoom.findMany({
             where: { members: { some: { userId: userId } } },
             include: { 
@@ -107,8 +118,8 @@ exports.getContacts = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+                                customer: { select: { nama: true } },
+                                staff: { select: { nama: true } }
                             }
                         }
                     }
@@ -117,7 +128,7 @@ exports.getContacts = async (req, res) => {
         });
 
         const formattedRooms = rooms.map(r => ({
-            id: `group_${r.id}`, // Unique string ID for frontend
+            id: `group_${r.id}`,
             realId: r.id,
             username: r.name,
             role: "group",
@@ -125,7 +136,7 @@ exports.getContacts = async (req, res) => {
             adminId: r.adminId,
             members: r.members.map(m => ({
                 id: m.user.id,
-                username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
+                username: m.user.customer?.nama || m.user.staff?.nama || m.user.username,
                 role: m.user.role
             }))
         }));
@@ -149,7 +160,7 @@ exports.getContacts = async (req, res) => {
             let unreadCount = 0;
             if (contact.isGroup) {
                 const groupMsgs = messages.filter(m => m.roomId === contact.realId);
-                lastMsg = groupMsgs[0]; // Messages are ordered desc
+                lastMsg = groupMsgs[0];
                 unreadCount = groupMsgs.filter(m => m.senderId !== userId && (!m.readByIds || !m.readByIds.includes(userId))).length;
             } else {
                 const dmMsgs = messages.filter(m => 
@@ -183,7 +194,6 @@ exports.getUnreadCount = async (req, res) => {
     try {
         const userId = parseInt(req.params.userId);
         
-        // Count unread direct messages
         const directCount = await prisma.message.count({
             where: {
                 receiverId: userId,
@@ -193,7 +203,6 @@ exports.getUnreadCount = async (req, res) => {
             }
         });
 
-        // Count unread group messages WHERE user is member AND user has NOT read it
         const groupCount = await prisma.message.count({
             where: {
                 roomId: { not: null },
@@ -203,7 +212,6 @@ exports.getUnreadCount = async (req, res) => {
             }
         });
 
-        // Count unread public messages if not initiated by this user
         const publicCount = await prisma.message.count({
             where: {
                 isPublic: true,

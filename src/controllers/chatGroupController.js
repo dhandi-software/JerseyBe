@@ -8,15 +8,16 @@ exports.createGroup = async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields: name, memberIds, adminId' });
         }
 
-        // Validate admin is a Dosen
+        // Validate admin has a staff role (manager or admin)
         const adminIdParsed = parseInt(adminId);
         if (isNaN(adminIdParsed)) {
             return res.status(400).json({ message: 'Invalid adminId format.' });
         }
         
         const adminUser = await prisma.user.findUnique({ where: { id: adminIdParsed } });
-        if (!adminUser || adminUser.role.toUpperCase() !== 'DOSEN') {
-            return res.status(403).json({ message: 'Only DOSEN can create groups.' });
+        const allowedRoles = ['manager', 'admin'];
+        if (!adminUser || !allowedRoles.includes(adminUser.role.toLowerCase())) {
+            return res.status(403).json({ message: 'Hanya Manager atau Admin yang dapat membuat grup.' });
         }
 
         // Add admin to memberIds automatically if not present
@@ -41,8 +42,8 @@ exports.createGroup = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+                                customer: { select: { nama: true } },
+                                staff: { select: { nama: true } }
                             }
                         }
                     }
@@ -59,7 +60,7 @@ exports.createGroup = async (req, res) => {
             adminId: chatRoom.adminId,
             members: chatRoom.members.map(m => ({
                 id: m.user.id,
-                username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
+                username: m.user.customer?.nama || m.user.staff?.nama || m.user.username,
                 role: m.user.role
             }))
         };
@@ -115,8 +116,8 @@ exports.addMembers = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+                                customer: { select: { nama: true } },
+                                staff: { select: { nama: true } }
                             }
                         }
                     }
@@ -133,7 +134,7 @@ exports.addMembers = async (req, res) => {
             adminId: updatedRoom.adminId,
             members: updatedRoom.members.map(m => ({
                 id: m.user.id,
-                username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
+                username: m.user.customer?.nama || m.user.staff?.nama || m.user.username,
                 role: m.user.role
             }))
         };
@@ -182,8 +183,8 @@ exports.removeMember = async (req, res) => {
                                 id: true,
                                 username: true,
                                 role: true,
-                                mahasiswa: { select: { nama: true } },
-                                dosen: { select: { nama: true } }
+                                customer: { select: { nama: true } },
+                                staff: { select: { nama: true } }
                             }
                         }
                     }
@@ -200,7 +201,7 @@ exports.removeMember = async (req, res) => {
             adminId: updatedRoom.adminId,
             members: updatedRoom.members.map(m => ({
                 id: m.user.id,
-                username: m.user.mahasiswa?.nama || m.user.dosen?.nama || m.user.username,
+                username: m.user.customer?.nama || m.user.staff?.nama || m.user.username,
                 role: m.user.role
             }))
         };

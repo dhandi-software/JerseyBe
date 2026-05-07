@@ -38,3 +38,22 @@ main()
     .finally(async () => {
         await prisma.$disconnect();
     });
+                email: newEmail,
+                username: username,
+                password: hashedPassword,
+                role: "admin",
+            }
+        });
+    }
+
+    console.log("Admin user updated/created:", user);
+}
+
+main()
+    .catch((e) => {
+        console.error(e);
+        process.exit(1);
+    })
+    .finally(async () => {
+        await prisma.$disconnect();
+    });

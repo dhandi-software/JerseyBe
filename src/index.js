@@ -22,26 +22,22 @@ app.use(cookieParser());
 // Serve static files for uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Routes
+// Core Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/penilaian', require('./routes/penilaianRoutes'));
-app.use('/api/bimbingan', require('./routes/bimbinganRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
-app.use('/api/pengajuan', require('./routes/pengajuanRoutes'));
-app.use('/api/sidang', require('./routes/sidangRoutes'));
-app.use('/api/acara', require('./routes/acaraRoutes'));
+app.use('/api/orders', require('./routes/orderRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {
-    res.send({ message: 'Skripsi Backend is running!' });
+    res.send({ message: 'FSCV Backend is running!' });
 });
 
 // Create HTTP server and attach Socket.io
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow all origins for development
+        origin: "*", 
         methods: ["GET", "POST"]
     }
 });
