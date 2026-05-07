@@ -261,54 +261,43 @@ const getDashboardStats = async (req, res) => {
             prisma.user.count({ where: { role: 'admin' } })
         ]);
 
-        console.log("Dashboard Counts:", { totalCustomer, totalStaff, totalAdmin });
-
         // Calculate Revenue and Transaction Trends
-        // 'ACC' orders are those with status NOT in ['MENUNGGU', 'DITOLAK']
         const accOrders = await prisma.jerseyOrder.findMany({
             where: {
                 status: { notIn: ['MENUNGGU', 'DITOLAK'] }
             },
             select: {
+                id: true,
+                customerId: true,
                 totalAmount: true,
-                createdAt: true
+                createdAt: true,
+                details: { select: { id: true } }
             }
         });
 
         const totalRevenue = accOrders.reduce((sum, order) => sum + order.totalAmount, 0);
 
-        // Prepare chart data (Relative time ranges for better visualization)
+        // Prepare chart data
         const weeklySales = [];
         const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-        // Last 7 Days
         for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            weeklySales.push({ 
-                name: dayNames[d.getDay()], 
-                pv: 0, 
-                dateStr: d.toISOString().split('T')[0] 
-            });
+            weeklySales.push({ name: dayNames[d.getDay()], pv: 0, dateStr: d.toISOString().split('T')[0] });
         }
 
-        // Last 4 Weeks
         const monthlySales = [
             { name: 'Minggu 1', pv: 0 }, { name: 'Minggu 2', pv: 0 },
             { name: 'Minggu 3', pv: 0 }, { name: 'Minggu 4', pv: 0 }
         ];
 
-        // Last 12 Months
         const yearlySales = [];
         for (let i = 11; i >= 0; i--) {
             const d = new Date();
             d.setMonth(d.getMonth() - i);
-            yearlySales.push({ 
-                name: monthNames[d.getMonth()], 
-                pv: 0, 
-                monthKey: `${d.getFullYear()}-${d.getMonth()}` 
-            });
+            yearlySales.push({ name: monthNames[d.getMonth()], pv: 0, monthKey: `${d.getFullYear()}-${d.getMonth()}` });
         }
 
         accOrders.forEach(order => {
@@ -316,11 +305,9 @@ const getDashboardStats = async (req, res) => {
             const dateStr = date.toISOString().split('T')[0];
             const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
             
-            // Weekly: match by exact date
             const dayObj = weeklySales.find(d => d.dateStr === dateStr);
             if (dayObj) dayObj.pv += order.totalAmount;
 
-            // Monthly: match by 7-day windows from 'now'
             const diffTime = now.getTime() - date.getTime();
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
             if (diffDays >= 0 && diffDays < 28) {
@@ -330,47 +317,102 @@ const getDashboardStats = async (req, res) => {
                 }
             }
 
-            // Yearly: match by month and year
             const monthObj = yearlySales.find(m => m.monthKey === monthKey);
             if (monthObj) monthObj.pv += order.totalAmount;
         });
 
+        // 1. Best Month
+        let bestMonth = { month: "Belum ada", year: "-", pv: 0 };
+        yearlySales.forEach(m => {
+            if (m.pv > bestMonth.pv) {
+                bestMonth = { month: m.name, year: m.monthKey.split('-')[0], pv: m.pv };
+            }
+        });
+
+        // 2. Best Year
+        const yearStats = {};
+        accOrders.forEach(order => {
+            const year = new Date(order.createdAt).getFullYear();
+            if (!yearStats[year]) yearStats[year] = { totalRevenue: 0, totalQuantity: 0 };
+            yearStats[year].totalRevenue += order.totalAmount;
+            yearStats[year].totalQuantity += order.details.length;
+        });
+
+        let bestYear = { year: "-", totalRevenue: 0, totalQuantity: 0 };
+        Object.keys(yearStats).forEach(year => {
+            if (yearStats[year].totalRevenue > bestYear.totalRevenue) {
+                bestYear = { year, ...yearStats[year] };
+            }
+        });
+
+        // 3. Top Buyer
+        const buyerStats = {};
+        accOrders.forEach(order => {
+            if (!buyerStats[order.customerId]) buyerStats[order.customerId] = { totalAmount: 0, orderCount: 0 };
+            buyerStats[order.customerId].totalAmount += order.totalAmount;
+            buyerStats[order.customerId].orderCount += 1;
+        });
+
+        let topBuyerId = null;
+        let topBuyerAmount = 0;
+        Object.keys(buyerStats).forEach(cid => {
+            if (buyerStats[cid].totalAmount > topBuyerAmount) {
+                topBuyerAmount = buyerStats[cid].totalAmount;
+                topBuyerId = parseInt(cid);
+            }
+        });
+
+        let topBuyer = { name: "Belum ada", category: "-", initial: "-" };
+        if (topBuyerId) {
+            const customer = await prisma.customer.findUnique({ where: { userId: topBuyerId } });
+            if (customer) {
+                topBuyer = {
+                    name: customer.nama,
+                    category: customer.category || "General",
+                    initial: customer.nama.substring(0, 3).toUpperCase()
+                };
+            }
+        }
+
+        // 4. New Orders
+        const latestOrdersRaw = await prisma.jerseyOrder.findMany({
+            orderBy: { createdAt: 'desc' },
+            take: 5,
+            select: { id: true, customerId: true }
+        });
+        
+        // Wait, wait, JerseyOrder has customerId, but NO customer relation in schema! 
+        // We have to fetch customers manually for newOrders.
+        const newOrders = [];
+        for (const lo of latestOrdersRaw) {
+            const customer = await prisma.customer.findUnique({ where: { userId: lo.customerId } });
+            if (customer) {
+                newOrders.push({ name: customer.nama });
+            }
+        }
+
         // Get 5 most recent customers who had any chat activity
         const recentMessages = await prisma.message.findMany({
-            where: {
-                OR: [
-                    { sender: { role: 'customer' } },
-                    { receiver: { role: 'customer' } }
-                ]
-            },
+            where: { OR: [{ sender: { role: 'customer' } }, { receiver: { role: 'customer' } }] },
             orderBy: { createdAt: 'desc' },
             take: 50,
-            include: { 
-                sender: { include: { customer: true } },
-                receiver: { include: { customer: true } }
-            }
+            include: { sender: { include: { customer: true } }, receiver: { include: { customer: true } } }
         });
 
         const recentChattersMap = new Map();
         recentMessages.forEach(msg => {
             if (msg.sender?.customer && !recentChattersMap.has(msg.sender.id)) {
                 recentChattersMap.set(msg.sender.id, {
-                    id: msg.sender.id,
-                    customerId: msg.sender.customer.id,
-                    nama: msg.sender.customer.nama,
-                    email: msg.sender.email,
-                    lastMessageAt: msg.createdAt,
+                    id: msg.sender.id, customerId: msg.sender.customer.id, nama: msg.sender.customer.nama,
+                    email: msg.sender.email, lastMessageAt: msg.createdAt,
                     lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? "📎 Lampiran" : "Pesan baru")),
                     category: msg.sender.customer.category || "General Customer"
                 });
             }
             if (msg.receiver?.customer && !recentChattersMap.has(msg.receiver.id)) {
                 recentChattersMap.set(msg.receiver.id, {
-                    id: msg.receiver.id,
-                    customerId: msg.receiver.customer.id,
-                    nama: msg.receiver.customer.nama,
-                    email: msg.receiver.email,
-                    lastMessageAt: msg.createdAt,
+                    id: msg.receiver.id, customerId: msg.receiver.customer.id, nama: msg.receiver.customer.nama,
+                    email: msg.receiver.email, lastMessageAt: msg.createdAt,
                     lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? "📎 Lampiran" : "Pesan baru")),
                     category: msg.receiver.customer.category || "General Customer"
                 });
@@ -386,30 +428,16 @@ const getDashboardStats = async (req, res) => {
                 orderBy: { id: 'desc' },
                 take: 5 - recentCustomers.length
             });
-            
             recentCustomers = [...recentCustomers, ...latestCustomers.map(c => ({
-                id: c.user.id,
-                customerId: c.id,
-                nama: c.nama,
-                email: c.user.email,
-                lastMessageAt: null,
-                category: c.category || "New Customer"
+                id: c.user.id, customerId: c.id, nama: c.nama, email: c.user.email,
+                lastMessageAt: null, category: c.category || "New Customer"
             }))];
         }
 
         const recentChatsData = await prisma.message.findMany({
             orderBy: { createdAt: 'desc' },
             take: 3,
-            include: {
-                sender: { 
-                    select: { 
-                        username: true, 
-                        role: true, 
-                        customer: { select: { nama: true } }, 
-                        staff: { select: { nama: true } } 
-                    } 
-                }
-            }
+            include: { sender: { select: { username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } } }
         });
 
         const recentChats = recentChatsData.map(chat => ({
@@ -425,24 +453,15 @@ const getDashboardStats = async (req, res) => {
             where: { isRead: false, receiverId: { not: null } }
         });
 
-        console.log("Dashboard Stats Success - Total Revenue:", totalRevenue);
         res.json({
             code: 200,
             status: "success",
             message: "Dashboard stats fetched successfully",
             data: {
-                totalCustomer,
-                totalStaff,
-                totalAdmin,
-                totalRevenue,
-                salesData: {
-                    weekly: weeklySales,
-                    monthly: monthlySales,
-                    yearly: yearlySales
-                },
-                recentCustomers,
-                recentChats,
-                totalUnreadChat
+                totalCustomer, totalStaff, totalAdmin, totalRevenue,
+                salesData: { weekly: weeklySales, monthly: monthlySales, yearly: yearlySales },
+                recentCustomers, recentChats, totalUnreadChat,
+                bestMonth, bestYear, topBuyer, newOrders
             }
         });
     } catch (error) {

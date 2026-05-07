@@ -141,3 +141,28 @@ model JerseyOrderDetail {
   
   order        JerseyOrder @relation(fields: [orderId], references: [id])
 }
+
+model BahanBaju {
+  id          Int                 @id @default(autoincrement())
+  nama        String
+  deskripsi   String?
+  stok        Int                 @default(0)
+  imageUrl    String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  histories   BahanBajuHistory[]
+}
+
+model BahanBajuHistory {
+  id          Int        @id @default(autoincrement())
+  bahanId     Int?
+  namaBahan   String?    // Menampung nama bahan jika item utamanya dihapus
+  aksi        String     // "TAMBAH", "KURANG", "UBAH", "BUAT", "HAPUS"
+  jumlah      Int        // Jumlah yang ditambahkan/dikurangkan
+  stokAkhir   Int        // Stok setelah perubahan
+  keterangan  String?
+  createdAt   DateTime   @default(now())
+
+  bahan       BahanBaju? @relation(fields: [bahanId], references: [id], onDelete: SetNull)
+}

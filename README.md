@@ -19,53 +19,120 @@ npm run dev
 npx prisma migrate dev
 ```
 
-## 💬 Chat API & Socket Documentation
+---
 
-Modul ini mendukung komunikasi real-time menggunakan **Socket.io** dan sinkronisasi data melalui **REST API**.
+## 📡 API Documentation
 
-### 📡 REST API Endpoints
+Seluruh endpoint API menggunakan prefix `/api`.
 
-Semua endpoint berikut diawali dengan `/api/chat`.
+### 🔐 Authentication Routes (`/api/auth`)
+Digunakan untuk mengelola sesi pengguna.
 
-| Method | Endpoint | Deskripsi |
-| :--- | :--- | :--- |
-| **GET** | `/contacts/:userId` | Mengambil daftar kontak (privat & grup) untuk user tertentu. |
-| **GET** | `/history/:userId/:targetId` | Mengambil riwayat pesan. `targetId` bisa berupa UserId, `public`, atau `group_ID`. |
-| **GET** | `/unread/:userId` | Mengambil total jumlah pesan yang belum dibaca. |
-| **POST** | `/upload` | Mengunggah lampiran (gambar/dokumen). Mengembalikan URL file. |
-| **POST** | `/groups` | Membuat grup chat baru. |
-| **POST** | `/groups/:id/members` | Menambahkan anggota ke dalam grup. |
-| **DELETE** | `/groups/:id/members/:uid` | Mengeluarkan anggota dari grup. |
-| **DELETE** | `/groups/:id` | Menghapus grup chat. |
+| Method | Endpoint | Description | Middleware | Request Body |
+| :--- | :--- | :--- | :--- | :--- |
+| **POST** | `/login` | Melakukan login pengguna. | - | `{"email": "string", "password": "string"}` |
+| **POST** | `/logout` | Melakukan logout pengguna. | - | - |
+
+### 🛡️ Admin & User Management (`/api/admin`)
+Digunakan oleh Admin/Manager untuk mengelola pengguna dan melihat statistik dashboard.
+
+| Method | Endpoint | Description | Middleware | Request Body |
+| :--- | :--- | :--- | :--- | :--- |
+| **POST** | `/create-customer` | Membuat akun customer baru. | Admin | `{"email": "string", "password": "string", "nama": "string"}` |
+| **POST** | `/create-staff` | Membuat akun staff internal. | Admin/Manager | `{"email": "string", "password": "string", "nama": "string", "role": "string"}` |
+| **GET** | `/users/count` | Mendapatkan jumlah user per role. | Admin | `?role=string` (query) |
+| **GET** | `/users-role` | Mendapatkan daftar user per role. | Admin | `?role=string` (query) |
+| **GET** | `/users/:id` | Mendapatkan detail profil user. | Admin | - |
+| **PUT** | `/users/:id` | Mengupdate data user/profil. | Admin | `{"email": "string", "nama": "string", "phone": "string", ...}` |
+| **DELETE** | `/users/:id` | Menghapus user secara permanen. | Admin | - |
+| **GET** | `/dashboard-stats` | Statistik lengkap untuk dashboard. | Admin | - |
+| **GET** | `/designers` | Mendapatkan daftar seluruh designer. | Admin | - |
+
+### 🛒 Order Management (`/api/orders`)
+Sistem pemesanan jersey mulai dari pembuatan hingga pelacakan.
+
+| Method | Endpoint | Description | Middleware | Request Body |
+| :--- | :--- | :--- | :--- | :--- |
+| **POST** | `/` | Membuat pesanan jersey baru. | Customer | `{"customerId": 1, "totalAmount": 0, "details": [...]}` |
+| **GET** | `/` | Mengambil seluruh daftar pesanan. | Admin | - |
+| **PATCH** | `/:id/status` | Update status pesanan / assign designer. | Admin | `{"status": "PROSES", "designerId": 1}` |
+| **GET** | `/customer/:customerId` | Daftar pesanan milik customer. | Customer | - |
+| **GET** | `/designer/:designerId` | Tugas pesanan untuk designer. | Designer | - |
+| **GET** | `/track/:orderId` | Melacak pesanan (Publik). | - | - |
+
+### 📦 Inventory (Bahan Baju) (`/api/bahan-baju`)
+Manajemen stok bahan baku kain.
+
+| Method | Endpoint | Description | Middleware | Request Body |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/` | Daftar seluruh bahan baku. | Admin | - |
+| **GET** | `/history` | Log aktivitas keluar/masuk stok. | Admin | - |
+| **POST** | `/` | Menambah bahan baru (+ Gambar). | Admin | `multipart/form-data` |
+| **PUT** | `/:id` | Update data bahan / stok. | Admin | `multipart/form-data` |
+| **DELETE** | `/:id` | Hapus bahan dan riwayatnya. | Admin | - |
+
+### 💬 Chat Service (`/api/chat`)
+Komunikasi real-time antar pengguna.
+
+| Method | Endpoint | Description | Middleware | Request Body |
+| :--- | :--- | :--- | :--- | :--- |
+| **GET** | `/contacts/:userId` | Daftar kontak dan pesan terakhir. | Auth | - |
+| **GET** | `/history/:userId/:other`| Riwayat pesan percakapan. | Auth | - |
+| **GET** | `/unread/:userId` | Jumlah total pesan belum dibaca. | Auth | - |
+| **POST** | `/upload` | Upload lampiran file chat. | Auth | `multipart/form-data` |
+| **POST** | `/groups` | Membuat grup chat baru. | Auth | `{"name": "string", "members": [id]}` |
+| **POST** | `/groups/:id/members` | Menambah anggota grup. | Auth | `{"userIds": [id]}` |
+| **DELETE** | `/groups/:id/members/:uid`| Mengeluarkan anggota grup. | Auth | - |
 
 ---
 
-### 🔌 Socket.io Events
+## 👥 Role-Based API Access
 
-Sistem chat menggunakan namespace default. Pastikan klien terhubung dan melakukan `join` segera setelah koneksi berhasil.
+Berikut adalah ringkasan endpoint yang dikelompokkan berdasarkan peran pengguna (Role) untuk memudahkan integrasi frontend:
+
+### 👤 Customer Endpoints
+- **Authentication**: `POST /api/auth/login`, `POST /api/auth/logout`
+- **Orders**: 
+    - `POST /api/orders` (Membuat pesanan baru)
+    - `GET /api/orders/customer/:customerId` (Riwayat pesanan pribadi)
+    - `GET /api/orders/track/:orderId` (Lacak status pesanan tanpa login)
+- **Chat**: 
+    - `GET /api/chat/contacts/:userId` (Chat dengan Admin/Designer)
+    - `GET /api/chat/history/:userId/:other` (Riwayat percakapan)
+    - `POST /api/chat/upload` (Kirim bukti pembayaran atau referensi desain)
+
+### 🎨 Designer Endpoints
+- **Orders**: 
+    - `GET /api/orders/designer/:designerId` (Daftar tugas desain yang masuk)
+    - `PATCH /api/orders/:id/status` (Update status pengerjaan desain: PROSES/SELESAI)
+- **Chat**: 
+    - `GET /api/chat/contacts/:userId` (Komunikasi dengan Customer/Admin)
+    - `POST /api/chat/upload` (Kirim file preview desain)
+
+### 🛠️ Admin & Manager Endpoints
+- **User MGMT**: `POST /api/admin/create-customer`, `POST /api/admin/create-staff`, `DELETE /api/admin/users/:id`
+- **Inventory**: Seluruh endpoint `/api/bahan-baju` (Manajemen kain & stok)
+- **Orders**: `GET /api/orders` (Pantau seluruh pesanan), `PATCH /api/orders/:id/status` (Assign designer)
+- **Stats**: `GET /api/admin/dashboard-stats` (Monitoring statistik bisnis)
+
+---
+
+## 🔌 Socket.io Events
+
+Sistem chat menggunakan **Socket.io** untuk pengiriman pesan instan.
 
 #### ⬆️ Client to Server (Emit)
-
-| Event | Payload | Deskripsi |
-| :--- | :--- | :--- |
-| `join` | `userId` | Mendaftarkan socket ke room user pribadi, room publik, dan semua grup yang diikuti. |
-| `send_message` | `{ senderId, receiverId?, roomId?, content?, isPublic?, attachmentUrl?, attachmentType?, replyToId? }` | Mengirim pesan baru (Privat, Grup, atau Publik). |
-| `mark_read` | `{ conversationWithId?, roomId?, isPublic?, userId }` | Menandai pesan sebagai telah dibaca dalam percakapan tertentu. |
-| `edit_message` | `{ messageId, newContent }` | Mengubah isi konten pesan yang sudah dikirim. |
-| `delete_message` | `{ messageId }` | Menghapus pesan untuk semua orang (Unsend). |
-| `delete_message_for_me` | `{ messageId, userId }` | Menghapus pesan hanya dari tampilan pengirim. |
+- `join`: `userId` (Join ke room pribadi & grup)
+- `send_message`: `{ senderId, receiverId, content, ... }`
+- `mark_read`: Menandai pesan telah dibaca.
+- `edit_message`: Mengubah isi pesan.
+- `delete_message`: Menghapus pesan (Unsend).
 
 #### ⬇️ Server to Client (Listen)
-
-| Event | Payload | Deskripsi |
-| :--- | :--- | :--- |
-| `receive_message` | `Message Object` | Diterima saat ada pesan masuk di percakapan aktif atau grup. |
-| `message_sent` | `Message Object` | Konfirmasi ke pengirim bahwa pesan berhasil disimpan di database. |
-| `messages_read` | `{ byUserId }` | Memberitahu pengirim bahwa pesannya telah dibaca oleh penerima. |
-| `message_edited` | `{ messageId, newContent, isEdited }` | Notifikasi saat sebuah pesan diubah isinya. |
-| `message_deleted` | `{ messageId }` | Notifikasi saat sebuah pesan dihapus oleh pengirim. |
-| `group_deleted` | `{ groupId }` | Notifikasi saat grup dibubarkan oleh admin. |
-| `group_member_removed` | `{ groupId }` | Notifikasi saat user dikeluarkan dari sebuah grup. |
+- `receive_message`: Menerima pesan baru.
+- `message_sent`: Konfirmasi pesan tersimpan.
+- `messages_read`: Notifikasi pesan dibaca.
+- `message_deleted`: Notifikasi pesan dihapus.
 
 ---
 
