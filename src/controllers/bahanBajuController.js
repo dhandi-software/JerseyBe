@@ -27,15 +27,23 @@ const getHistory = async (req, res) => {
 };
 
 const createBahan = async (req, res) => {
-    const { nama, deskripsi, stok } = req.body;
+    const { nama, deskripsi, stok, harga } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     
+    const parsedStok = parseInt(stok);
+    const finalStok = isNaN(parsedStok) ? 0 : parsedStok;
+    
+    const parsedHarga = parseFloat(harga);
+    const finalHarga = isNaN(parsedHarga) ? 0 : parsedHarga;
+
     try {
+        console.log("Creating Bahan:", { nama, finalStok, finalHarga });
         const newBahan = await prisma.bahanBaju.create({
             data: {
                 nama,
                 deskripsi,
-                stok: parseInt(stok) || 0,
+                stok: finalStok,
+                harga: finalHarga,
                 imageUrl
             }
         });
@@ -53,20 +61,25 @@ const createBahan = async (req, res) => {
 
         res.json({ status: 'success', data: newBahan });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ status: 'error', message: 'Internal server error' });
+        console.error("CREATE_BAHAN_ERROR:", error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
     }
 };
 
 const updateBahan = async (req, res) => {
     const { id } = req.params;
-    const { nama, deskripsi, stok, keterangan_ubah, deleteImage } = req.body;
+    const { nama, deskripsi, stok, harga, keterangan_ubah, deleteImage } = req.body;
 
     try {
         const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
         if (!existingBahan) return res.status(404).json({ message: 'Not found' });
 
-        const updatedStok = parseInt(stok);
+        const parsedStok = parseInt(stok);
+        const updatedStok = isNaN(parsedStok) ? existingBahan.stok : parsedStok;
+        
+        const parsedHarga = parseFloat(harga);
+        const updatedHarga = isNaN(parsedHarga) ? existingBahan.harga : parsedHarga;
+
         const selisih = updatedStok - existingBahan.stok;
 
         let newImageUrl = existingBahan.imageUrl;
@@ -78,7 +91,13 @@ const updateBahan = async (req, res) => {
 
         const updatedBahan = await prisma.bahanBaju.update({
             where: { id: parseInt(id) },
-            data: { nama, deskripsi, stok: updatedStok, imageUrl: newImageUrl }
+            data: { 
+                nama, 
+                deskripsi, 
+                stok: updatedStok, 
+                harga: updatedHarga,
+                imageUrl: newImageUrl 
+            }
         });
 
         if (selisih !== 0) {
@@ -107,8 +126,8 @@ const updateBahan = async (req, res) => {
 
         res.json({ status: 'success', data: updatedBahan });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({ status: 'error', message: 'Internal server error' });
+        console.error("UPDATE_BAHAN_ERROR:", error);
+        res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
     }
 };
 

@@ -8,6 +8,8 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
+    "pdfkit": "^0.18.0",
+    "pdfkit-table": "^0.1.99",
     "socket.io": "^4.8.3"
   },
   "scripts": {

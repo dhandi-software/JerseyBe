@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const prisma = require('../prisma');
+const PDFDocument = require('pdfkit-table');
 
 function generateRandomId() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid ambiguous chars
@@ -93,17 +94,66 @@ router.patch('/:id/status', async (req, res) => {
         const { id } = req.params;
         const { status, designerId } = req.body;
 
+        const currentOrder = await prisma.jerseyOrder.findUnique({
+            where: { id: parseInt(id) },
+            include: { details: true }
+        });
+
+        if (!currentOrder) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+
         const dataUpdate = { status };
         if (designerId !== undefined) {
             dataUpdate.designerId = designerId;
         }
 
-        const updatedOrder = await prisma.jerseyOrder.update({
-            where: { id: parseInt(id) },
-            data: dataUpdate
+        // Use transaction to ensure order update and stock reduction are atomic
+        const result = await prisma.$transaction(async (tx) => {
+            const updated = await tx.jerseyOrder.update({
+                where: { id: parseInt(id) },
+                data: dataUpdate
+            });
+
+            // Reduce stock only when moving from MENUNGGU to DESAIN
+            if (currentOrder.status === 'MENUNGGU' && status === 'DESAIN') {
+                const stockToReduce = {};
+                currentOrder.details.forEach(detail => {
+                    stockToReduce[detail.productId] = (stockToReduce[detail.productId] || 0) + 1;
+                });
+
+                for (const [productId, qty] of Object.entries(stockToReduce)) {
+                    const idInt = parseInt(productId);
+                    const bahan = await tx.bahanBaju.findUnique({ where: { id: idInt } });
+                    
+                    if (bahan) {
+                        await tx.bahanBaju.update({
+                            where: { id: idInt },
+                            data: {
+                                stok: {
+                                    decrement: qty
+                                }
+                            }
+                        });
+
+                        // Log history
+                        await tx.bahanBajuHistory.create({
+                            data: {
+                                bahanId: idInt,
+                                namaBahan: bahan.nama,
+                                aksi: "KURANG",
+                                jumlah: qty,
+                                stokAkhir: bahan.stok - qty,
+                                keterangan: `Stok berkurang otomatis (Order ${currentOrder.orderId} diterima)`
+                            }
+                        });
+                    }
+                }
+            }
+            return updated;
         });
 
-        res.json(updatedOrder);
+        res.json(result);
     } catch (error) {
         console.error("Failed to update order status:", error);
         res.status(500).json({ error: "Failed to update order status" });
@@ -163,20 +213,39 @@ router.get('/designer/:designerId', async (req, res) => {
 router.get('/track/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
-        const order = await prisma.jerseyOrder.findUnique({
-            where: { orderId },
-            include: { details: true }
+        const order = await prisma.jerseyOrder.findFirst({
+            where: { 
+                orderId: {
+                    equals: orderId,
+                    mode: 'insensitive'
+                }
+            },
+            include: { 
+                details: true,
+                designer: { select: { staff: { select: { nama: true } }, username: true } }
+            }
         });
 
         if (!order) {
             return res.status(404).json({ error: "Order not found" });
         }
 
-        res.json(order);
+        // Fetch user data to attach customer name
+        const user = await prisma.user.findUnique({
+            where: { id: order.customerId },
+            select: { username: true }
+        });
+
+        const formattedOrder = {
+            ...order,
+            customerName: user ? user.username : "Guest User",
+            designerName: order.designer ? (order.designer.staff?.nama || order.designer.username) : "Belum Ada"
+        };
+
+        res.json(formattedOrder);
     } catch (error) {
         console.error("Failed to track order:", error);
         res.status(500).json({ error: "Failed to track order" });
     }
 });
-
 module.exports = router;

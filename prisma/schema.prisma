@@ -147,6 +147,7 @@ model BahanBaju {
   nama        String
   deskripsi   String?
   stok        Int                 @default(0)
+  harga       Float               @default(0)
   imageUrl    String?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt

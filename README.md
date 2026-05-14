@@ -60,16 +60,16 @@ Sistem pemesanan jersey mulai dari pembuatan hingga pelacakan.
 | **GET** | `/designer/:designerId` | Tugas pesanan untuk designer. | Designer | - |
 | **GET** | `/track/:orderId` | Melacak pesanan (Publik). | - | - |
 
-### 📦 Inventory (Bahan Baju) (`/api/bahan-baju`)
-Manajemen stok bahan baku kain.
+### 📦 Inventaris (Bahan Baju) (`/api/bahan-baju`)
+Manajemen stok bahan baku kain dan harga produk.
 
 | Method | Endpoint | Description | Middleware | Request Body |
 | :--- | :--- | :--- | :--- | :--- |
-| **GET** | `/` | Daftar seluruh bahan baku. | Admin | - |
+| **GET** | `/` | Daftar seluruh bahan baku (+ Harga & Stok). | Admin | - |
 | **GET** | `/history` | Log aktivitas keluar/masuk stok. | Admin | - |
-| **POST** | `/` | Menambah bahan baru (+ Gambar). | Admin | `multipart/form-data` |
-| **PUT** | `/:id` | Update data bahan / stok. | Admin | `multipart/form-data` |
-| **DELETE** | `/:id` | Hapus bahan dan riwayatnya. | Admin | - |
+| **POST** | `/` | Menambah bahan baru (+ Gambar & Harga). | Admin | `multipart/form-data` (`nama`, `deskripsi`, `stok`, `harga`, `image`) |
+| **PUT** | `/:id` | Update data bahan, stok, atau harga. | Admin | `multipart/form-data` (`nama`, `deskripsi`, `stok`, `harga`, `keterangan_ubah`, `deleteImage`, `image`) |
+| **DELETE** | `/:id` | Hapus bahan secara permanen. | Admin | - |
 
 ### 💬 Chat Service (`/api/chat`)
 Komunikasi real-time antar pengguna.
