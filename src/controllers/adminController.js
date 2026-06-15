@@ -255,6 +255,8 @@ const getUserById = async (req, res) => {
 const getDashboardStats = async (req, res) => {
     try {
         const now = new Date();
+        const filterYear = req.query.year ? parseInt(req.query.year) : null;
+        const filterMonth = req.query.month ? parseInt(req.query.month) : null; // 1-indexed (1 = Jan, 12 = Dec)
         const [totalCustomer, totalStaff, totalAdmin] = await Promise.all([
             prisma.user.count({ where: { role: 'customer' } }),
             prisma.user.count({ where: { role: { in: ['desain', 'gudang', 'manager'] } } }),
@@ -278,54 +280,83 @@ const getDashboardStats = async (req, res) => {
         const totalRevenue = accOrders.reduce((sum, order) => sum + order.totalAmount, 0);
 
         // Prepare chart data
-        const weeklySales = [];
-        const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
-        for (let i = 6; i >= 0; i--) {
+        // 1. Harian (daily) -> Last 30 days
+        const dailySales = [];
+        for (let i = 29; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            weeklySales.push({ name: dayNames[d.getDay()], pv: 0, dateStr: d.toISOString().split('T')[0] });
+            const dateStr = d.toISOString().split('T')[0];
+            const name = `${d.getDate()} ${monthNames[d.getMonth()]}`;
+            dailySales.push({ name, pv: 0, dateStr });
         }
 
-        const monthlySales = [
-            { name: 'Minggu 1', pv: 0 }, { name: 'Minggu 2', pv: 0 },
-            { name: 'Minggu 3', pv: 0 }, { name: 'Minggu 4', pv: 0 }
-        ];
-
-        const yearlySales = [];
+        // 2. Bulanan (monthly) -> Last 12 months (grouped by month name)
+        const monthlySales = [];
         for (let i = 11; i >= 0; i--) {
             const d = new Date();
             d.setMonth(d.getMonth() - i);
-            yearlySales.push({ name: monthNames[d.getMonth()], pv: 0, monthKey: `${d.getFullYear()}-${d.getMonth()}` });
+            const name = `${monthNames[d.getMonth()]} ${d.getFullYear().toString().substring(2)}`;
+            monthlySales.push({ name, pv: 0, monthKey: `${d.getFullYear()}-${d.getMonth()}` });
+        }
+
+        // 3. Tahunan (yearly) -> starting from 2022 to current year dynamically
+        const yearlySales = [];
+        const currentYear = now.getFullYear();
+        const startYear = 2022;
+        for (let y = startYear; y <= currentYear; y++) {
+            yearlySales.push({ name: `${y}`, pv: 0, year: y });
+        }
+
+        // 4. Lifetime (lifetime) -> from Jan 2026 to current month
+        const lifetimeSales = [];
+        let tempYear = startYear;
+        let tempMonth = 0; // Jan
+        const currentMonth = now.getMonth();
+        while (tempYear < currentYear || (tempYear === currentYear && tempMonth <= currentMonth)) {
+            const name = `${monthNames[tempMonth]} ${tempYear.toString().substring(2)}`;
+            lifetimeSales.push({
+                name,
+                pv: 0,
+                monthKey: `${tempYear}-${tempMonth}`
+            });
+            tempMonth++;
+            if (tempMonth > 11) {
+                tempMonth = 0;
+                tempYear++;
+            }
         }
 
         accOrders.forEach(order => {
             const date = new Date(order.createdAt);
             const dateStr = date.toISOString().split('T')[0];
-            const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
-            
-            const dayObj = weeklySales.find(d => d.dateStr === dateStr);
+            const orderYear = date.getFullYear();
+            const orderMonth = date.getMonth();
+            const monthKey = `${orderYear}-${orderMonth}`;
+
+            // Populate daily
+            const dayObj = dailySales.find(d => d.dateStr === dateStr);
             if (dayObj) dayObj.pv += order.totalAmount;
 
-            const diffTime = now.getTime() - date.getTime();
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-            if (diffDays >= 0 && diffDays < 28) {
-                const weekIdx = 3 - Math.floor(diffDays / 7);
-                if (weekIdx >= 0 && weekIdx < 4) {
-                    monthlySales[weekIdx].pv += order.totalAmount;
-                }
-            }
-
-            const monthObj = yearlySales.find(m => m.monthKey === monthKey);
+            // Populate monthly
+            const monthObj = monthlySales.find(m => m.monthKey === monthKey);
             if (monthObj) monthObj.pv += order.totalAmount;
+
+            // Populate yearly
+            const yearObj = yearlySales.find(y => y.year === orderYear);
+            if (yearObj) yearObj.pv += order.totalAmount;
+
+            // Populate lifetime
+            const lifetimeObj = lifetimeSales.find(l => l.monthKey === monthKey);
+            if (lifetimeObj) lifetimeObj.pv += order.totalAmount;
         });
 
         // 1. Best Month
         let bestMonth = { month: "Belum ada", year: "-", pv: 0 };
-        yearlySales.forEach(m => {
+        lifetimeSales.forEach(m => {
             if (m.pv > bestMonth.pv) {
-                bestMonth = { month: m.name, year: m.monthKey.split('-')[0], pv: m.pv };
+                bestMonth = { month: m.name.split(' ')[0], year: m.monthKey.split('-')[0], pv: m.pv };
             }
         });
 
@@ -391,9 +422,14 @@ const getDashboardStats = async (req, res) => {
             }
         }
 
-        // Get 5 most recent customers who had any chat activity
+        // Get 5 most recent customers who had any chat activity with admin
         const recentMessages = await prisma.message.findMany({
-            where: { OR: [{ sender: { role: 'customer' } }, { receiver: { role: 'customer' } }] },
+            where: {
+                OR: [
+                    { sender: { role: 'customer' }, receiver: { role: 'admin' } },
+                    { sender: { role: 'admin' }, receiver: { role: 'customer' } }
+                ]
+            },
             orderBy: { createdAt: 'desc' },
             take: 50,
             include: { sender: { include: { customer: true } }, receiver: { include: { customer: true } } }
@@ -435,23 +471,94 @@ const getDashboardStats = async (req, res) => {
         }
 
         const recentChatsData = await prisma.message.findMany({
+            where: {
+                OR: [
+                    { sender: { role: 'admin' } },
+                    { receiver: { role: 'admin' } }
+                ]
+            },
             orderBy: { createdAt: 'desc' },
             take: 3,
-            include: { sender: { select: { username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } } }
+            include: { 
+                sender: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } },
+                receiver: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } }
+            }
         });
 
-        const recentChats = recentChatsData.map(chat => ({
-            id: chat.id,
-            content: chat.content || (chat.attachmentName ? `📎 ${chat.attachmentName}` : (chat.attachmentUrl ? "📎 Lampiran file" : "")),
-            senderName: chat.sender?.customer?.nama || chat.sender?.staff?.nama || chat.sender?.username || "Unknown",
-            senderRole: chat.sender?.role,
-            createdAt: chat.createdAt,
-            isRead: chat.isRead
-        }));
+        const recentChats = recentChatsData.map(chat => {
+            const isSenderAdmin = chat.sender?.role?.toLowerCase() === 'admin';
+            const partnerId = isSenderAdmin ? chat.receiverId : chat.senderId;
+            return {
+                id: chat.id,
+                content: chat.content || (chat.attachmentName ? `📎 ${chat.attachmentName}` : (chat.attachmentUrl ? "📎 Lampiran file" : "")),
+                senderName: chat.sender?.customer?.nama || chat.sender?.staff?.nama || chat.sender?.username || "Unknown",
+                senderRole: chat.sender?.role,
+                createdAt: chat.createdAt,
+                isRead: chat.isRead,
+                partnerId: partnerId
+            };
+        });
 
         const totalUnreadChat = await prisma.message.count({
-            where: { isRead: false, receiverId: { not: null } }
+            where: { isRead: false, receiver: { role: 'admin' } }
         });
+
+        let responseSalesData = { daily: dailySales, monthly: monthlySales, yearly: yearlySales, lifetime: lifetimeSales };
+
+        if (filterYear) {
+            if (filterMonth) {
+                // Filtered by specific year and month -> Show daily breakdown of that month
+                const filteredDailySales = [];
+                const daysInMonth = new Date(filterYear, filterMonth, 0).getDate();
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateStr = `${filterYear}-${String(filterMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const name = `${day} ${monthNames[filterMonth - 1]}`;
+                    filteredDailySales.push({ name, pv: 0, dateStr });
+                }
+
+                accOrders.forEach(order => {
+                    const date = new Date(order.createdAt);
+                    if (date.getFullYear() === filterYear && (date.getMonth() + 1) === filterMonth) {
+                        const day = date.getDate();
+                        if (filteredDailySales[day - 1]) {
+                            filteredDailySales[day - 1].pv += order.totalAmount;
+                        }
+                    }
+                });
+                
+                responseSalesData = {
+                    daily: filteredDailySales,
+                    monthly: [],
+                    yearly: [],
+                    lifetime: []
+                };
+            } else {
+                // Filtered by specific year -> Show monthly breakdown of that year
+                const filteredMonthlySales = [];
+                const maxMonths = filterYear === now.getFullYear() ? (now.getMonth() + 1) : 12;
+                for (let m = 0; m < maxMonths; m++) {
+                    const name = `${monthNames[m]} ${String(filterYear).substring(2)}`;
+                    filteredMonthlySales.push({ name, pv: 0, monthKey: `${filterYear}-${m}` });
+                }
+
+                accOrders.forEach(order => {
+                    const date = new Date(order.createdAt);
+                    if (date.getFullYear() === filterYear) {
+                        const m = date.getMonth();
+                        if (filteredMonthlySales[m]) {
+                            filteredMonthlySales[m].pv += order.totalAmount;
+                        }
+                    }
+                });
+
+                responseSalesData = {
+                    daily: [],
+                    monthly: filteredMonthlySales,
+                    yearly: [],
+                    lifetime: []
+                };
+            }
+        }
 
         res.json({
             code: 200,
@@ -459,7 +566,7 @@ const getDashboardStats = async (req, res) => {
             message: "Dashboard stats fetched successfully",
             data: {
                 totalCustomer, totalStaff, totalAdmin, totalRevenue,
-                salesData: { weekly: weeklySales, monthly: monthlySales, yearly: yearlySales },
+                salesData: responseSalesData,
                 recentCustomers, recentChats, totalUnreadChat,
                 bestMonth, bestYear, topBuyer, newOrders
             }

@@ -123,6 +123,13 @@ model JerseyOrder {
   designNote     String?
   designUrl      String?
   paymentUrl     String?
+  queueNumber    String?
+  isWorking      Boolean             @default(false)
+  mockupUrl      String?
+  designStatus   String              @default("PENDING") // PENDING, SENT, APPROVED, REVISI
+  designFeedback String?
+  shippingMethod String              @default("PICKUP")
+  shippingAddress String?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   
@@ -163,6 +170,7 @@ model BahanBajuHistory {
   jumlah      Int        // Jumlah yang ditambahkan/dikurangkan
   stokAkhir   Int        // Stok setelah perubahan
   keterangan  String?
+  actor       String?    // Aktor yang mengubah stok
   createdAt   DateTime   @default(now())
 
   bahan       BahanBaju? @relation(fields: [bahanId], references: [id], onDelete: SetNull)

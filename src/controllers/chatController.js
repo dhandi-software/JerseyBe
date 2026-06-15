@@ -89,7 +89,7 @@ exports.getContacts = async (req, res) => {
         const users = await prisma.user.findMany({
             where: {
                 id: { not: userId },
-                ...(isCustomer ? { role: { not: 'customer' } } : {})
+                ...(isCustomer ? { role: 'desain' } : {})
             },
             select: {
                 id: true,

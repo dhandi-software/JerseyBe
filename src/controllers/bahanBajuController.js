@@ -27,7 +27,7 @@ const getHistory = async (req, res) => {
 };
 
 const createBahan = async (req, res) => {
-    const { nama, deskripsi, stok, harga } = req.body;
+    const { nama, deskripsi, stok, harga, actor } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     
     const parsedStok = parseInt(stok);
@@ -55,7 +55,8 @@ const createBahan = async (req, res) => {
                 aksi: "BUAT",
                 jumlah: newBahan.stok,
                 stokAkhir: newBahan.stok,
-                keterangan: "Bahan baju baru ditambahkan"
+                keterangan: "Bahan baju baru ditambahkan",
+                actor: actor || "System"
             }
         });
 
@@ -68,7 +69,7 @@ const createBahan = async (req, res) => {
 
 const updateBahan = async (req, res) => {
     const { id } = req.params;
-    const { nama, deskripsi, stok, harga, keterangan_ubah, deleteImage } = req.body;
+    const { nama, deskripsi, stok, harga, keterangan_ubah, deleteImage, actor } = req.body;
 
     try {
         const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
@@ -96,7 +97,7 @@ const updateBahan = async (req, res) => {
                 deskripsi, 
                 stok: updatedStok, 
                 harga: updatedHarga,
-                imageUrl: newImageUrl 
+                imageUrl: newImageUrl
             }
         });
 
@@ -108,7 +109,8 @@ const updateBahan = async (req, res) => {
                     aksi: selisih > 0 ? "TAMBAH" : "KURANG",
                     jumlah: Math.abs(selisih),
                     stokAkhir: updatedStok,
-                    keterangan: keterangan_ubah || (selisih > 0 ? "Penambahan stok" : "Pengurangan stok")
+                    keterangan: keterangan_ubah || (selisih > 0 ? "Penambahan stok" : "Pengurangan stok"),
+                    actor: actor || "System"
                 }
             });
         } else if (nama !== existingBahan.nama || deskripsi !== existingBahan.deskripsi || newImageUrl !== existingBahan.imageUrl) {
@@ -119,7 +121,8 @@ const updateBahan = async (req, res) => {
                     aksi: "UBAH",
                     jumlah: 0,
                     stokAkhir: updatedStok,
-                    keterangan: "Pembaruan detail bahan/gambar"
+                    keterangan: "Pembaruan detail bahan/gambar",
+                    actor: actor || "System"
                 }
             });
         }
@@ -133,6 +136,7 @@ const updateBahan = async (req, res) => {
 
 const deleteBahan = async (req, res) => {
     const { id } = req.params;
+    const { actor } = req.query;
     try {
         const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
         if (!existingBahan) return res.status(404).json({ message: 'Not found' });
@@ -145,7 +149,8 @@ const deleteBahan = async (req, res) => {
                 aksi: "HAPUS",
                 jumlah: existingBahan.stok,
                 stokAkhir: 0,
-                keterangan: `Menghapus bahan ${existingBahan.nama} (Stok terakhir: ${existingBahan.stok})`
+                keterangan: `Menghapus bahan ${existingBahan.nama} (Stok terakhir: ${existingBahan.stok})`,
+                actor: actor || "System"
             }
         });
 
