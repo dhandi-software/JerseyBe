@@ -485,6 +485,91 @@ router.patch('/:id/cancel-mockup', async (req, res) => {
     }
 });
 
+// Upload layout mockup for an order
+router.post('/:id/layout', upload.single('layout'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+        }
+        
+        const layoutUrl = `/uploads/${req.file.filename}`;
+        
+        const updatedOrder = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                layoutUrl,
+                layoutStatus: "SENT"
+            }
+        });
+        
+        res.json(updatedOrder);
+    } catch (error) {
+        console.error("Failed to upload layout:", error);
+        res.status(500).json({ error: "Failed to upload layout" });
+    }
+});
+
+// Approve layout mockup
+router.patch('/:id/approve-layout', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                layoutStatus: "APPROVED",
+                layoutFeedback: null
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to approve layout:", error);
+        res.status(500).json({ error: "Failed to approve layout" });
+    }
+});
+
+// Reject/Revisi layout mockup
+router.patch('/:id/revisi-layout', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { feedback } = req.body;
+        if (!feedback) {
+            return res.status(400).json({ error: "Feedback is required for revision" });
+        }
+        
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                layoutStatus: "REVISI",
+                layoutFeedback: feedback
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to submit layout revision:", error);
+        res.status(500).json({ error: "Failed to submit layout revision" });
+    }
+});
+
+// Cancel/Retract layout mockup
+router.patch('/:id/cancel-layout', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                layoutUrl: null,
+                layoutStatus: "PENDING"
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to cancel layout:", error);
+        res.status(500).json({ error: "Failed to cancel layout" });
+    }
+});
+
+
 // Recommend alternative materials for an order
 router.patch('/:id/recommend-alternatives', async (req, res) => {
     try {

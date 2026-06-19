@@ -128,6 +128,9 @@ model JerseyOrder {
   mockupUrl      String?
   designStatus   String              @default("PENDING") // PENDING, SENT, APPROVED, REVISI
   designFeedback String?
+  layoutUrl      String?
+  layoutStatus   String              @default("PENDING") // PENDING, SENT, APPROVED, REVISI
+  layoutFeedback String?
   shippingMethod String              @default("PICKUP")
   shippingAddress String?
   recommendedBahanIds Int[]           @default([])
