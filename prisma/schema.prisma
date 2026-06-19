@@ -130,6 +130,7 @@ model JerseyOrder {
   designFeedback String?
   shippingMethod String              @default("PICKUP")
   shippingAddress String?
+  recommendedBahanIds Int[]           @default([])
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   
@@ -150,16 +151,18 @@ model JerseyOrderDetail {
 }
 
 model BahanBaju {
-  id          Int                 @id @default(autoincrement())
-  nama        String
-  deskripsi   String?
-  stok        Int                 @default(0)
-  harga       Float               @default(0)
-  imageUrl    String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  id            Int                 @id @default(autoincrement())
+  nama          String
+  deskripsi     String?
+  kuantitasKg   Float               @default(0)
+  rasioKonversi Float               @default(1.0)
+  status        String              @default("Tersedia") // Tersedia, Habis
+  harga         Float               @default(0)
+  imageUrl      String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
 
-  histories   BahanBajuHistory[]
+  histories     BahanBajuHistory[]
 }
 
 model BahanBajuHistory {
@@ -167,8 +170,8 @@ model BahanBajuHistory {
   bahanId     Int?
   namaBahan   String?    // Menampung nama bahan jika item utamanya dihapus
   aksi        String     // "TAMBAH", "KURANG", "UBAH", "BUAT", "HAPUS"
-  jumlah      Int        // Jumlah yang ditambahkan/dikurangkan
-  stokAkhir   Int        // Stok setelah perubahan
+  jumlah      Float      // Jumlah yang ditambahkan/dikurangkan
+  stokAkhir   Float      // Stok setelah perubahan
   keterangan  String?
   actor       String?    // Aktor yang mengubah stok
   createdAt   DateTime   @default(now())

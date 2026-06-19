@@ -27,22 +27,29 @@ const getHistory = async (req, res) => {
 };
 
 const createBahan = async (req, res) => {
-    const { nama, deskripsi, stok, harga, actor } = req.body;
+    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, actor } = req.body;
     const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
     
-    const parsedStok = parseInt(stok);
-    const finalStok = isNaN(parsedStok) ? 0 : parsedStok;
+    const parsedKuantitas = parseFloat(kuantitasKg);
+    const finalKuantitas = isNaN(parsedKuantitas) ? 0 : parsedKuantitas;
+    
+    const parsedRasio = parseFloat(rasioKonversi);
+    const finalRasio = isNaN(parsedRasio) ? 1.0 : parsedRasio;
+
+    const finalStatus = status || (finalKuantitas <= 0 ? "Habis" : "Tersedia");
     
     const parsedHarga = parseFloat(harga);
     const finalHarga = isNaN(parsedHarga) ? 0 : parsedHarga;
 
     try {
-        console.log("Creating Bahan:", { nama, finalStok, finalHarga });
+        console.log("Creating Bahan:", { nama, finalKuantitas, finalRasio, finalStatus, finalHarga });
         const newBahan = await prisma.bahanBaju.create({
             data: {
                 nama,
                 deskripsi,
-                stok: finalStok,
+                kuantitasKg: finalKuantitas,
+                rasioKonversi: finalRasio,
+                status: finalStatus,
                 harga: finalHarga,
                 imageUrl
             }
@@ -53,8 +60,8 @@ const createBahan = async (req, res) => {
                 bahanId: newBahan.id,
                 namaBahan: newBahan.nama,
                 aksi: "BUAT",
-                jumlah: newBahan.stok,
-                stokAkhir: newBahan.stok,
+                jumlah: newBahan.kuantitasKg,
+                stokAkhir: newBahan.kuantitasKg,
                 keterangan: "Bahan baju baru ditambahkan",
                 actor: actor || "System"
             }
@@ -69,19 +76,24 @@ const createBahan = async (req, res) => {
 
 const updateBahan = async (req, res) => {
     const { id } = req.params;
-    const { nama, deskripsi, stok, harga, keterangan_ubah, deleteImage, actor } = req.body;
+    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, keterangan_ubah, deleteImage, actor } = req.body;
 
     try {
         const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
         if (!existingBahan) return res.status(404).json({ message: 'Not found' });
 
-        const parsedStok = parseInt(stok);
-        const updatedStok = isNaN(parsedStok) ? existingBahan.stok : parsedStok;
+        const parsedKuantitas = parseFloat(kuantitasKg);
+        const updatedKuantitas = isNaN(parsedKuantitas) ? existingBahan.kuantitasKg : parsedKuantitas;
+        
+        const parsedRasio = parseFloat(rasioKonversi);
+        const updatedRasio = isNaN(parsedRasio) ? existingBahan.rasioKonversi : parsedRasio;
+
+        const updatedStatus = status || (updatedKuantitas <= 0 ? "Habis" : "Tersedia");
         
         const parsedHarga = parseFloat(harga);
         const updatedHarga = isNaN(parsedHarga) ? existingBahan.harga : parsedHarga;
 
-        const selisih = updatedStok - existingBahan.stok;
+        const selisih = updatedKuantitas - existingBahan.kuantitasKg;
 
         let newImageUrl = existingBahan.imageUrl;
         if (req.file) {
@@ -95,7 +107,9 @@ const updateBahan = async (req, res) => {
             data: { 
                 nama, 
                 deskripsi, 
-                stok: updatedStok, 
+                kuantitasKg: updatedKuantitas, 
+                rasioKonversi: updatedRasio,
+                status: updatedStatus,
                 harga: updatedHarga,
                 imageUrl: newImageUrl
             }
@@ -108,20 +122,20 @@ const updateBahan = async (req, res) => {
                     namaBahan: updatedBahan.nama,
                     aksi: selisih > 0 ? "TAMBAH" : "KURANG",
                     jumlah: Math.abs(selisih),
-                    stokAkhir: updatedStok,
-                    keterangan: keterangan_ubah || (selisih > 0 ? "Penambahan stok" : "Pengurangan stok"),
+                    stokAkhir: updatedKuantitas,
+                    keterangan: keterangan_ubah || (selisih > 0 ? "Penambahan ketersediaan" : "Pengurangan ketersediaan"),
                     actor: actor || "System"
                 }
             });
-        } else if (nama !== existingBahan.nama || deskripsi !== existingBahan.deskripsi || newImageUrl !== existingBahan.imageUrl) {
+        } else if (nama !== existingBahan.nama || deskripsi !== existingBahan.deskripsi || newImageUrl !== existingBahan.imageUrl || updatedRasio !== existingBahan.rasioKonversi || updatedStatus !== existingBahan.status) {
              await prisma.bahanBajuHistory.create({
                 data: {
                     bahanId: existingBahan.id,
                     namaBahan: updatedBahan.nama,
                     aksi: "UBAH",
                     jumlah: 0,
-                    stokAkhir: updatedStok,
-                    keterangan: "Pembaruan detail bahan/gambar",
+                    stokAkhir: updatedKuantitas,
+                    keterangan: "Pembaruan detail ketersediaan/rasio/status/gambar",
                     actor: actor || "System"
                 }
             });
@@ -147,9 +161,9 @@ const deleteBahan = async (req, res) => {
                 bahanId: existingBahan.id,
                 namaBahan: existingBahan.nama,
                 aksi: "HAPUS",
-                jumlah: existingBahan.stok,
+                jumlah: existingBahan.kuantitasKg,
                 stokAkhir: 0,
-                keterangan: `Menghapus bahan ${existingBahan.nama} (Stok terakhir: ${existingBahan.stok})`,
+                keterangan: `Menghapus bahan ${existingBahan.nama} (Ketersediaan terakhir: ${existingBahan.kuantitasKg} kg)`,
                 actor: actor || "System"
             }
         });

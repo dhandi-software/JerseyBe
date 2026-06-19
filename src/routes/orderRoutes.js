@@ -146,22 +146,72 @@ router.patch('/:id/status', async (req, res) => {
 
             // Reduce stock only when moving from MENUNGGU to DESAIN
             if (currentOrder.status === 'MENUNGGU' && status === 'DESAIN') {
+                const parseSizeAndSleeve = (playerSize) => {
+                    if (!playerSize) return { size: "L", sleeve: "Lengan Pendek" };
+                    const match = playerSize.match(/^([^(]+)(?:\(([^)]+)\))?$/);
+                    if (match) {
+                        const size = match[1].trim();
+                        const sleeve = match[2] ? match[2].trim() : "Lengan Pendek";
+                        return { size, sleeve };
+                    }
+                    return { size: playerSize.trim() || "L", sleeve: "Lengan Pendek" };
+                };
+
+                const getJerseyKgRequirement = (size, sleeve) => {
+                    const s = size.toUpperCase().trim();
+                    const isLongSleeve = sleeve === "Lengan Panjang";
+                    const isBigSize = ["3XL", "4XL", "5XL", "6XL", "XXXL", "XXXXL"].includes(s);
+
+                    if (isLongSleeve) {
+                        return isBigSize ? 1.0 : 0.5;
+                    } else {
+                        return isBigSize ? 0.5 : (1.0 / 3.0);
+                    }
+                };
+
                 const stockToReduce = {};
-                currentOrder.details.forEach(detail => {
-                    stockToReduce[detail.productId] = (stockToReduce[detail.productId] || 0) + 1;
+                const uniqueProductIds = [...new Set(currentOrder.details.map(d => parseInt(d.productId)))].filter(Boolean);
+                const dbBahans = await tx.bahanBaju.findMany({
+                    where: { id: { in: uniqueProductIds } }
+                });
+                const bahanMap = {};
+                dbBahans.forEach(b => {
+                    bahanMap[b.id] = b;
                 });
 
-                for (const [productId, qty] of Object.entries(stockToReduce)) {
+                currentOrder.details.forEach(detail => {
+                    const { size, sleeve } = parseSizeAndSleeve(detail.playerSize);
+                    const bId = parseInt(detail.productId);
+                    if (!bId) return;
+                    
+                    const rasio = bahanMap[bId]?.rasioKonversi || 2.5;
+                    const s = size.toUpperCase().trim();
+                    const isLongSleeve = sleeve === "Lengan Panjang";
+                    const isBigSize = ["3XL", "4XL", "5XL", "6XL", "XXXL", "XXXXL"].includes(s);
+
+                    let meterReq = 0;
+                    if (isLongSleeve) {
+                        meterReq = isBigSize ? 2.5 : 1.25;
+                    } else {
+                        meterReq = isBigSize ? 1.25 : 0.8333;
+                    }
+                    const kgReq = meterReq / rasio;
+                    stockToReduce[bId] = (stockToReduce[bId] || 0) + kgReq;
+                });
+
+                for (const [productId, kgToDecrement] of Object.entries(stockToReduce)) {
                     const idInt = parseInt(productId);
-                    const bahan = await tx.bahanBaju.findUnique({ where: { id: idInt } });
+                    const bahan = bahanMap[idInt];
                     
                     if (bahan) {
+                        const newKuantitas = Math.max(0, bahan.kuantitasKg - kgToDecrement);
+                        const newStatus = newKuantitas <= 0 ? "Habis" : bahan.status;
+
                         await tx.bahanBaju.update({
                             where: { id: idInt },
                             data: {
-                                stok: {
-                                    decrement: qty
-                                }
+                                kuantitasKg: parseFloat(newKuantitas.toFixed(4)),
+                                status: newStatus
                             }
                         });
 
@@ -171,9 +221,9 @@ router.patch('/:id/status', async (req, res) => {
                                 bahanId: idInt,
                                 namaBahan: bahan.nama,
                                 aksi: "KURANG",
-                                jumlah: qty,
-                                stokAkhir: bahan.stok - qty,
-                                keterangan: `Stok berkurang otomatis (Order ${currentOrder.orderId} diterima)`
+                                jumlah: parseFloat(kgToDecrement.toFixed(4)),
+                                stokAkhir: parseFloat(newKuantitas.toFixed(4)),
+                                keterangan: `Ketersediaan berkurang otomatis (Order ${currentOrder.orderId} diterima)`
                             }
                         });
                     }
@@ -432,6 +482,114 @@ router.patch('/:id/cancel-mockup', async (req, res) => {
     } catch (error) {
         console.error("Failed to cancel mockup:", error);
         res.status(500).json({ error: "Failed to cancel mockup" });
+    }
+});
+
+// Recommend alternative materials for an order
+router.patch('/:id/recommend-alternatives', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { recommendedBahanIds } = req.body;
+        
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                recommendedBahanIds: recommendedBahanIds || []
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to recommend alternatives:", error);
+        res.status(500).json({ error: "Failed to recommend alternatives" });
+    }
+});
+
+// Customer selects an alternative material for an order
+router.patch('/:id/select-alternative', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { selectedBahanId } = req.body;
+        
+        const order = await prisma.jerseyOrder.findUnique({
+            where: { id: parseInt(id) },
+            include: { details: true }
+        });
+        
+        if (!order) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+        
+        const selectedBahan = await prisma.bahanBaju.findUnique({
+            where: { id: selectedBahanId }
+        });
+        
+        if (!selectedBahan) {
+            return res.status(404).json({ error: "Selected material not found" });
+        }
+        
+        const getSizeSurcharge = (size) => {
+            const s = size.toUpperCase().trim();
+            if (["XXS", "XS", "S", "M", "L", "XL", "XXL", "2XL"].includes(s)) {
+                return 0;
+            }
+            const numXlMatch = s.match(/^(\d+)XL$/);
+            if (numXlMatch) {
+                const xCount = parseInt(numXlMatch[1], 10);
+                if (xCount >= 3) {
+                    return (xCount - 2) * 10000;
+                }
+            }
+            const xMatches = s.match(/^(X+)L$/);
+            if (xMatches) {
+                const xCount = xMatches[1].length;
+                if (xCount >= 3) {
+                    return (xCount - 2) * 10000;
+                }
+            }
+            return 0;
+        };
+
+        const updatedOrder = await prisma.$transaction(async (tx) => {
+            // Update all order details with the new material
+            await tx.jerseyOrderDetail.updateMany({
+                where: { orderId: parseInt(id) },
+                data: {
+                    productId: selectedBahan.id,
+                    productTitle: selectedBahan.nama
+                }
+            });
+            
+            // Recalculate totalAmount (sum of base price + size surcharge per player)
+            const basePrice = selectedBahan.harga || 150000;
+            let newTotal = 0;
+            order.details.forEach(detail => {
+                let size = "L";
+                if (detail.playerSize) {
+                    const match = detail.playerSize.match(/^([^(]+)/);
+                    if (match) {
+                        size = match[1].trim();
+                    }
+                }
+                const surcharge = getSizeSurcharge(size);
+                newTotal += basePrice + surcharge;
+            });
+            
+            return await tx.jerseyOrder.update({
+                where: { id: parseInt(id) },
+                data: {
+                    recommendedBahanIds: [],
+                    totalAmount: newTotal
+                },
+                include: {
+                    details: true
+                }
+            });
+        });
+        
+        res.json(updatedOrder);
+    } catch (error) {
+        console.error("Failed to select alternative material:", error);
+        res.status(500).json({ error: "Failed to select alternative material" });
     }
 });
 

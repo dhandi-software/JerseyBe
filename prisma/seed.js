@@ -6,9 +6,6 @@ async function main() {
   const passwordHash = '$2b$10$8wKYGAAlFsLB7BRcDYjUfuPUK67Luih/jq3FYijMlh2YT.j5.4P4W';
 
   // Cleanup existing data to avoid conflicts
-  await prisma.acaraComment.deleteMany();
-  await prisma.acaraReadStatus.deleteMany();
-  await prisma.acara.deleteMany();
   await prisma.message.deleteMany();
   await prisma.chatRoomMember.deleteMany();
   await prisma.chatRoom.deleteMany();
