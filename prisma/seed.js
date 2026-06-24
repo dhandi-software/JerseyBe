@@ -5,13 +5,13 @@ async function main() {
   // Hash for 'password123'
   const passwordHash = '$2b$10$8wKYGAAlFsLB7BRcDYjUfuPUK67Luih/jq3FYijMlh2YT.j5.4P4W';
 
-  // Cleanup existing data to avoid conflicts
-  await prisma.message.deleteMany();
-  await prisma.chatRoomMember.deleteMany();
-  await prisma.chatRoom.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.staff.deleteMany();
-  await prisma.user.deleteMany();
+  // Cleanup existing data to avoid conflicts (DISABLED TO PREVENT DATA LOSS)
+  // await prisma.message.deleteMany();
+  // await prisma.chatRoomMember.deleteMany();
+  // await prisma.chatRoom.deleteMany();
+  // await prisma.customer.deleteMany();
+  // await prisma.staff.deleteMany();
+  // await prisma.user.deleteMany();
 
   // 1. Admin
   await prisma.user.upsert({

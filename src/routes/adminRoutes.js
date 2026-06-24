@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { 
-    createCustomer, 
+const {
+    createCustomer,
     createTeamInternal,
     getUserCountByRole,
     getUsersByRole,
@@ -10,7 +10,8 @@ const {
     getUserById,
     getDashboardStats,
     getAllChatCustomers,
-    getDesigners
+    getDesigners,
+    getOmsetReport
 } = require('../controllers/adminController');
 
 // Routes updated to use commercial terminology
@@ -21,6 +22,7 @@ router.get('/users/count', getUserCountByRole);
 router.get('/users-role', getUsersByRole);
 router.get('/designers', getDesigners);
 router.get('/dashboard-stats', getDashboardStats);
+router.get('/omset-report', getOmsetReport);
 router.get('/chat-customers', getAllChatCustomers);
 
 router.get('/users/:id', getUserById);

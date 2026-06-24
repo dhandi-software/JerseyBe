@@ -1,3 +1,11 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-prisma.mahasiswa.findFirst({ include: { user: true } }).then(res => console.log(JSON.stringify(res, null, 2))).finally(() => prisma.$disconnect());
+async function main() {
+    const histories = await prisma.bahanBajuHistory.findMany();
+    for(const h of histories) {
+        if(h.id === 30 || h.jumlah === 2000) {
+            console.log(h);
+        }
+    }
+}
+main().catch(console.error).finally(() => prisma.$disconnect());

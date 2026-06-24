@@ -161,6 +161,8 @@ model BahanBaju {
   rasioKonversi Float               @default(1.0)
   status        String              @default("Tersedia") // Tersedia, Habis
   harga         Float               @default(0)
+  hargaBeli     Float?              @default(0)
+  buktiNotaUrl  String?
   imageUrl      String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
@@ -175,6 +177,9 @@ model BahanBajuHistory {
   aksi        String     // "TAMBAH", "KURANG", "UBAH", "BUAT", "HAPUS"
   jumlah      Float      // Jumlah yang ditambahkan/dikurangkan
   stokAkhir   Float      // Stok setelah perubahan
+  hargaBeli   Float?     // Harga beli saat transaksi ini terjadi
+  hargaJual   Float?     // Harga jual saat transaksi ini terjadi
+  totalNilai  Float?     // jumlah x hargaBeli (jika TAMBAH/BUAT) atau jumlah x hargaJual (jika KURANG)
   keterangan  String?
   actor       String?    // Aktor yang mengubah stok
   createdAt   DateTime   @default(now())

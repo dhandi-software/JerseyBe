@@ -132,10 +132,10 @@ const getUsersByRole = async (req, res) => {
                 include: { user: { select: { email: true, id: true, role: true } } }
             });
         } else {
-             users = await prisma.user.findMany({
+            users = await prisma.user.findMany({
                 where: { role: lowerRole },
                 select: { id: true, email: true, username: true, role: true }
-             });
+            });
         }
 
         res.json({ data: users });
@@ -150,7 +150,7 @@ const updateUser = async (req, res) => {
         const { id } = req.params;
         const { email, password, role, ...profileData } = req.body;
 
-        const user = await prisma.user.findUnique({ 
+        const user = await prisma.user.findUnique({
             where: { id: parseInt(id) },
             include: { customer: true, staff: true }
         });
@@ -163,33 +163,33 @@ const updateUser = async (req, res) => {
         }
 
         await prisma.$transaction(async (prisma) => {
-             if (Object.keys(updateData).length > 0) {
-                 await prisma.user.update({
-                     where: { id: parseInt(id) },
-                     data: updateData
-                 });
-             }
+            if (Object.keys(updateData).length > 0) {
+                await prisma.user.update({
+                    where: { id: parseInt(id) },
+                    data: updateData
+                });
+            }
 
-             if (user.role === 'customer') {
-                 await prisma.customer.update({
-                     where: { userId: parseInt(id) },
-                     data: {
-                         nama: profileData.name || profileData.nama,
-                         phone: profileData.phone,
-                         address: profileData.address,
-                         category: profileData.category || profileData.jurusan,
-                         memberSince: profileData.memberSince || profileData.tahunMasuk
-                     }
-                 });
-             } else if (['desain', 'manager', 'gudang', 'admin'].includes(user.role)) {
-                 await prisma.staff.update({
-                     where: { userId: parseInt(id) },
-                     data: {
-                         nama: profileData.name || profileData.nama,
-                         position: profileData.position || profileData.jabatan
-                     }
-                 });
-             }
+            if (user.role === 'customer') {
+                await prisma.customer.update({
+                    where: { userId: parseInt(id) },
+                    data: {
+                        nama: profileData.name || profileData.nama,
+                        phone: profileData.phone,
+                        address: profileData.address,
+                        category: profileData.category || profileData.jurusan,
+                        memberSince: profileData.memberSince || profileData.tahunMasuk
+                    }
+                });
+            } else if (['desain', 'manager', 'gudang', 'admin'].includes(user.role)) {
+                await prisma.staff.update({
+                    where: { userId: parseInt(id) },
+                    data: {
+                        nama: profileData.name || profileData.nama,
+                        position: profileData.position || profileData.jabatan
+                    }
+                });
+            }
         });
 
         res.json({ message: "User updated successfully" });
@@ -206,7 +206,7 @@ const deleteUser = async (req, res) => {
 
         await prisma.$transaction(async (prisma) => {
             const user = await prisma.user.findUnique({ where: { id: parseInt(id) } });
-            if (!user) throw new Error("User not found"); 
+            if (!user) throw new Error("User not found");
 
             if (user.role === 'customer') {
                 await prisma.customer.delete({ where: { userId: parseInt(id) } });
@@ -243,7 +243,7 @@ const getUserById = async (req, res) => {
             ... (user.customer ? user.customer : {}),
             ... (user.staff ? user.staff : {})
         };
-        
+
         res.json({ data: userData });
 
     } catch (error) {
@@ -411,7 +411,7 @@ const getDashboardStats = async (req, res) => {
             take: 5,
             select: { id: true, customerId: true }
         });
-        
+
         // Wait, wait, JerseyOrder has customerId, but NO customer relation in schema! 
         // We have to fetch customers manually for newOrders.
         const newOrders = [];
@@ -479,7 +479,7 @@ const getDashboardStats = async (req, res) => {
             },
             orderBy: { createdAt: 'desc' },
             take: 3,
-            include: { 
+            include: {
                 sender: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } },
                 receiver: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } }
             }
@@ -525,7 +525,7 @@ const getDashboardStats = async (req, res) => {
                         }
                     }
                 });
-                
+
                 responseSalesData = {
                     daily: filteredDailySales,
                     monthly: [],
@@ -608,7 +608,7 @@ const getDesigners = async (req, res) => {
                 staff: { select: { nama: true } }
             }
         });
-        
+
         const formatted = designers.map(d => ({
             id: d.id,
             email: d.email,
@@ -634,3 +634,112 @@ module.exports = {
     getAllChatCustomers,
     getDesigners
 };
+
+const getOmsetReport = async (req, res) => {
+    try {
+        const { startDate, endDate } = req.query;
+        let dateFilter = {};
+        if (startDate && endDate) {
+            dateFilter = {
+                gte: new Date(startDate),
+                lte: new Date(endDate + 'T23:59:59.999Z')
+            };
+        }
+
+        const dateWhere = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
+
+        // 1. Total Pemasukan & Breakdown
+        const orders = await prisma.jerseyOrder.findMany({
+            where: dateWhere,
+            include: { details: true }
+        });
+
+        let totalPemasukan = 0;
+        const revenueBreakdownMap = {};
+
+        orders.forEach(order => {
+            // Only include orders that are considered 'laku' (all orders are valid sales in this context, or maybe filter out canceled if any. We will include all as before)
+            totalPemasukan += order.totalAmount;
+
+            let title = 'Lain-lain';
+            if (order.details && order.details.length > 0) {
+                title = order.details[0].productTitle || 'Produk Custom';
+            }
+
+            if (!revenueBreakdownMap[title]) revenueBreakdownMap[title] = 0;
+            revenueBreakdownMap[title] += order.totalAmount;
+        });
+
+        const revenueBreakdown = Object.keys(revenueBreakdownMap).map(name => ({
+            nama: name,
+            total: revenueBreakdownMap[name]
+        }));
+
+        // 2. Total Pengeluaran
+        const expenses = await prisma.bahanBajuHistory.aggregate({
+            where: {
+                aksi: { in: ['BUAT', 'TAMBAH'] },
+                ...dateWhere
+            },
+            _sum: { totalNilai: true }
+        });
+        const totalPengeluaran = expenses._sum.totalNilai || 0;
+
+        // 3. Keuntungan Bersih
+        const netProfit = totalPemasukan - totalPengeluaran;
+
+        // 4. Performa Bahan Baku
+        const materials = await prisma.bahanBaju.findMany({
+            include: {
+                histories: {
+                    where: dateWhere
+                }
+            }
+        });
+
+        const bahanPerformance = materials.map(m => {
+            let totalDibeli = 0;
+            let totalPemanfaatan = 0;
+            let totalModal = 0;
+
+            m.histories.forEach(h => {
+                if (h.aksi === 'BUAT' || h.aksi === 'TAMBAH') {
+                    totalDibeli += h.jumlah;
+                    totalModal += (h.totalNilai || 0);
+                } else if (h.aksi === 'KURANG') {
+                    totalPemanfaatan += Math.abs(h.jumlah);
+                }
+            });
+
+            return {
+                id: m.id,
+                nama: m.nama,
+                imageUrl: m.imageUrl,
+                buktiNotaUrl: m.buktiNotaUrl,
+                hargaBeli: m.hargaBeli,
+                hargaJual: m.harga,
+                totalDibeli,
+                totalModal,
+                sisaStok: m.kuantitasKg,
+                pemanfaatan: totalPemanfaatan,
+                totalPendapatanBahan: totalPemanfaatan * (m.harga || 0)
+            };
+        }).filter(m => m.totalDibeli > 0 || m.pemanfaatan > 0 || m.sisaStok > 0);
+
+        res.status(200).json({
+            status: "success",
+            data: {
+                totalPemasukan,
+                totalPengeluaran,
+                netProfit,
+                bahanPerformance,
+                revenueBreakdown
+            }
+        });
+    } catch (error) {
+        console.error("Error getOmsetReport:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+    }
+};
+
+module.exports.getOmsetReport = getOmsetReport;

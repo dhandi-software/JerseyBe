@@ -27,8 +27,9 @@ const getHistory = async (req, res) => {
 };
 
 const createBahan = async (req, res) => {
-    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, actor } = req.body;
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null;
+    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, actor } = req.body;
+    const imageUrl = req.files && req.files.image ? `/uploads/${req.files.image[0].filename}` : null;
+    const buktiNotaUrl = req.files && req.files.buktiNota ? `/uploads/${req.files.buktiNota[0].filename}` : null;
     
     const parsedKuantitas = parseFloat(kuantitasKg);
     const finalKuantitas = isNaN(parsedKuantitas) ? 0 : parsedKuantitas;
@@ -41,6 +42,9 @@ const createBahan = async (req, res) => {
     const parsedHarga = parseFloat(harga);
     const finalHarga = isNaN(parsedHarga) ? 0 : parsedHarga;
 
+    const parsedHargaBeli = parseFloat(hargaBeli);
+    const finalHargaBeli = isNaN(parsedHargaBeli) ? 0 : parsedHargaBeli;
+
     try {
         console.log("Creating Bahan:", { nama, finalKuantitas, finalRasio, finalStatus, finalHarga });
         const newBahan = await prisma.bahanBaju.create({
@@ -51,7 +55,9 @@ const createBahan = async (req, res) => {
                 rasioKonversi: finalRasio,
                 status: finalStatus,
                 harga: finalHarga,
-                imageUrl
+                hargaBeli: finalHargaBeli,
+                imageUrl,
+                buktiNotaUrl
             }
         });
 
@@ -62,6 +68,9 @@ const createBahan = async (req, res) => {
                 aksi: "BUAT",
                 jumlah: newBahan.kuantitasKg,
                 stokAkhir: newBahan.kuantitasKg,
+                hargaBeli: newBahan.hargaBeli,
+                hargaJual: newBahan.harga,
+                totalNilai: newBahan.kuantitasKg * (newBahan.hargaBeli || 0),
                 keterangan: "Bahan baju baru ditambahkan",
                 actor: actor || "System"
             }
@@ -76,7 +85,7 @@ const createBahan = async (req, res) => {
 
 const updateBahan = async (req, res) => {
     const { id } = req.params;
-    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, keterangan_ubah, deleteImage, actor } = req.body;
+    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, keterangan_ubah, deleteImage, deleteBuktiNota, actor } = req.body;
 
     try {
         const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
@@ -93,13 +102,23 @@ const updateBahan = async (req, res) => {
         const parsedHarga = parseFloat(harga);
         const updatedHarga = isNaN(parsedHarga) ? existingBahan.harga : parsedHarga;
 
+        const parsedHargaBeli = parseFloat(hargaBeli);
+        const updatedHargaBeli = isNaN(parsedHargaBeli) ? (existingBahan.hargaBeli || 0) : parsedHargaBeli;
+
         const selisih = updatedKuantitas - existingBahan.kuantitasKg;
 
         let newImageUrl = existingBahan.imageUrl;
-        if (req.file) {
-            newImageUrl = `/uploads/${req.file.filename}`;
+        if (req.files && req.files.image) {
+            newImageUrl = `/uploads/${req.files.image[0].filename}`;
         } else if (deleteImage === "true") {
             newImageUrl = null;
+        }
+
+        let newBuktiNotaUrl = existingBahan.buktiNotaUrl;
+        if (req.files && req.files.buktiNota) {
+            newBuktiNotaUrl = `/uploads/${req.files.buktiNota[0].filename}`;
+        } else if (deleteBuktiNota === "true") {
+            newBuktiNotaUrl = null;
         }
 
         const updatedBahan = await prisma.bahanBaju.update({
@@ -111,19 +130,26 @@ const updateBahan = async (req, res) => {
                 rasioKonversi: updatedRasio,
                 status: updatedStatus,
                 harga: updatedHarga,
-                imageUrl: newImageUrl
+                hargaBeli: updatedHargaBeli,
+                imageUrl: newImageUrl,
+                buktiNotaUrl: newBuktiNotaUrl
             }
         });
 
         if (selisih !== 0) {
+            const isTambah = selisih > 0;
+            const absSelisih = Math.abs(selisih);
             await prisma.bahanBajuHistory.create({
                 data: {
                     bahanId: existingBahan.id,
                     namaBahan: updatedBahan.nama,
-                    aksi: selisih > 0 ? "TAMBAH" : "KURANG",
-                    jumlah: Math.abs(selisih),
+                    aksi: isTambah ? "TAMBAH" : "KURANG",
+                    jumlah: absSelisih,
                     stokAkhir: updatedKuantitas,
-                    keterangan: keterangan_ubah || (selisih > 0 ? "Penambahan ketersediaan" : "Pengurangan ketersediaan"),
+                    hargaBeli: updatedBahan.hargaBeli,
+                    hargaJual: updatedBahan.harga,
+                    totalNilai: isTambah ? (absSelisih * (updatedBahan.hargaBeli || 0)) : 0,
+                    keterangan: keterangan_ubah || (isTambah ? "Penambahan ketersediaan" : "Pengurangan ketersediaan"),
                     actor: actor || "System"
                 }
             });
@@ -135,6 +161,9 @@ const updateBahan = async (req, res) => {
                     aksi: "UBAH",
                     jumlah: 0,
                     stokAkhir: updatedKuantitas,
+                    hargaBeli: updatedBahan.hargaBeli,
+                    hargaJual: updatedBahan.harga,
+                    totalNilai: 0,
                     keterangan: "Pembaruan detail ketersediaan/rasio/status/gambar",
                     actor: actor || "System"
                 }
@@ -163,6 +192,9 @@ const deleteBahan = async (req, res) => {
                 aksi: "HAPUS",
                 jumlah: existingBahan.kuantitasKg,
                 stokAkhir: 0,
+                hargaBeli: existingBahan.hargaBeli,
+                hargaJual: existingBahan.harga,
+                totalNilai: 0,
                 keterangan: `Menghapus bahan ${existingBahan.nama} (Ketersediaan terakhir: ${existingBahan.kuantitasKg} kg)`,
                 actor: actor || "System"
             }
