@@ -117,6 +117,8 @@ model JerseyOrder {
   id             Int                 @id @default(autoincrement())
   orderId        String              @unique @default(uuid())
   customerId     Int
+  customerName   String?             // Untuk pelanggan offline / admin
+  customerPhone  String?             // Untuk pelanggan offline / admin
   designerId     Int?
   status         String              @default("MENUNGGU") // MENUNGGU, DESAIN, LAYOUT, FINISHING, SELESAI
   totalAmount    Float
@@ -133,6 +135,7 @@ model JerseyOrder {
   layoutFeedback String?
   shippingMethod String              @default("PICKUP")
   shippingAddress String?
+  damagedPcs      Int                 @default(0)
   recommendedBahanIds Int[]           @default([])
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
@@ -182,6 +185,9 @@ model BahanBajuHistory {
   totalNilai  Float?     // jumlah x hargaBeli (jika TAMBAH/BUAT) atau jumlah x hargaJual (jika KURANG)
   keterangan  String?
   actor       String?    // Aktor yang mengubah stok
+  customerName String?   // Nama pemesan / customer terkait
+  pcs         Int?       // Jumlah pcs rusak (khusus untuk retur barang)
+  orderId     Int?       // ID referensi ke pesanan (khusus retur barang)
   createdAt   DateTime   @default(now())
 
   bahan       BahanBaju? @relation(fields: [bahanId], references: [id], onDelete: SetNull)

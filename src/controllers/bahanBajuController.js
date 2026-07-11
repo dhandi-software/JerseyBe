@@ -70,7 +70,7 @@ const createBahan = async (req, res) => {
                 stokAkhir: newBahan.kuantitasKg,
                 hargaBeli: newBahan.hargaBeli,
                 hargaJual: newBahan.harga,
-                totalNilai: newBahan.kuantitasKg * (newBahan.hargaBeli || 0),
+                totalNilai: newBahan.hargaBeli || 0,
                 keterangan: "Bahan baju baru ditambahkan",
                 actor: actor || "System"
             }
@@ -148,7 +148,7 @@ const updateBahan = async (req, res) => {
                     stokAkhir: updatedKuantitas,
                     hargaBeli: updatedBahan.hargaBeli,
                     hargaJual: updatedBahan.harga,
-                    totalNilai: isTambah ? (absSelisih * (updatedBahan.hargaBeli || 0)) : 0,
+                    totalNilai: isTambah ? Math.max(0, (updatedBahan.hargaBeli || 0) - (existingBahan.hargaBeli || 0)) : 0,
                     keterangan: keterangan_ubah || (isTambah ? "Penambahan ketersediaan" : "Pengurangan ketersediaan"),
                     actor: actor || "System"
                 }
@@ -210,9 +210,29 @@ const deleteBahan = async (req, res) => {
     }
 };
 
+const getReturBahan = async (req, res) => {
+    try {
+        const retur = await prisma.bahanBajuHistory.findMany({
+            where: {
+                OR: [
+                    { keterangan: { contains: 'rusak', mode: 'insensitive' } },
+                    { keterangan: { contains: 'reject', mode: 'insensitive' } }
+                ]
+            },
+            include: { bahan: true },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json({ status: 'success', data: retur });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error', message: 'Internal server error' });
+    }
+};
+
 module.exports = {
     getAllBahan,
     getHistory,
+    getReturBahan,
     createBahan,
     updateBahan,
     deleteBahan
