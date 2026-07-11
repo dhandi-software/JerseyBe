@@ -6,11 +6,13 @@ const {
     getHistory,
     createBahan,
     updateBahan,
-    deleteBahan
+    deleteBahan,
+    getReturBahan
 } = require('../controllers/bahanBajuController');
 
 router.get('/', getAllBahan);
 router.get('/history', getHistory);
+router.get('/retur', getReturBahan);
 router.post('/', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), createBahan);
 router.put('/:id', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), updateBahan);
 router.delete('/:id', deleteBahan);

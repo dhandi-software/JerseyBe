@@ -15,7 +15,7 @@ function generateRandomId() {
 
 router.post('/', async (req, res) => {
     try {
-        const { customerId, totalAmount, designNote, designUrl, paymentUrl, shippingMethod, shippingAddress, details } = req.body;
+        const { customerId, customerName, customerPhone, totalAmount, designNote, designUrl, paymentUrl, shippingMethod, shippingAddress, details } = req.body;
         
         // Generate a unique short order ID
         let orderId = generateRandomId();
@@ -29,6 +29,8 @@ router.post('/', async (req, res) => {
             data: {
                 orderId,
                 customerId,
+                customerName,
+                customerPhone,
                 totalAmount,
                 designNote,
                 designUrl,
@@ -85,7 +87,8 @@ router.get('/', async (req, res) => {
 
         const formattedOrders = orders.map(o => ({
             ...o,
-            customerName: userMap[o.customerId] || "Guest User",
+            isAdminOrder: !!o.customerName, // true only if admin manually set customerName (offline order)
+            customerName: o.customerName || userMap[o.customerId] || "Guest User",
             designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : "Belum Ada"
         }));
 
@@ -259,7 +262,7 @@ router.get('/customer/:customerId', async (req, res) => {
 
         const formatted = orders.map(o => ({
             ...o,
-            customerName: user ? (user.customer?.nama || user.username) : "Guest User",
+            customerName: o.customerName || (user ? (user.customer?.nama || user.username) : "Guest User"),
             designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : "Belum Ada"
         }));
         res.json(formatted);
@@ -293,7 +296,7 @@ router.get('/designer/:designerId', async (req, res) => {
 
         const formatted = orders.map(o => ({
             ...o,
-            customerName: userMap[o.customerId] || "Guest User",
+            customerName: o.customerName || userMap[o.customerId] || "Guest User",
             designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : "Belum Ada"
         }));
         res.json(formatted);
@@ -423,6 +426,23 @@ router.post('/:id/mockup', upload.single('mockup'), async (req, res) => {
     } catch (error) {
         console.error("Failed to upload mockup:", error);
         res.status(500).json({ error: "Failed to upload mockup" });
+    }
+});
+
+// Update payment URL for admin upload
+router.patch('/:id/payment', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { paymentUrl } = req.body;
+        
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: { paymentUrl }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to update payment URL:", error);
+        res.status(500).json({ error: "Failed to update payment URL" });
     }
 });
 
@@ -675,6 +695,196 @@ router.patch('/:id/select-alternative', async (req, res) => {
     } catch (error) {
         console.error("Failed to select alternative material:", error);
         res.status(500).json({ error: "Failed to select alternative material" });
+    }
+});
+
+// Report damaged items for an order
+router.post('/:id/damage', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { productId, pcs, keterangan } = req.body;
+        
+        if (!productId || !pcs || pcs <= 0) {
+            return res.status(400).json({ error: "Product ID and valid Pcs are required" });
+        }
+        
+        const order = await prisma.jerseyOrder.findUnique({
+            where: { id: parseInt(id) },
+            include: { details: true }
+        });
+        
+        if (!order) {
+            return res.status(404).json({ error: "Order not found" });
+        }
+        
+        const user = await prisma.user.findUnique({
+            where: { id: order.customerId },
+            select: { username: true, customer: { select: { nama: true } } }
+        });
+        const customerName = order.customerName || user?.customer?.nama || user?.username || 'Customer';
+        
+        const bahan = await prisma.bahanBaju.findUnique({
+            where: { id: parseInt(productId) }
+        });
+        
+        if (!bahan) {
+            return res.status(404).json({ error: "Material not found" });
+        }
+        
+        // Calculate kg requirement from pcs using rasioKonversi
+        const rasio = bahan.rasioKonversi || 2.5;
+        // In previous logic: kgReq = meterReq / rasio. 
+        // For simplicity, we just assume: 1 pcs = (1 / rasio) kg, or we can just use 1 kg = rasio pcs. 
+        // So kg = pcs / rasio
+        const kgToDecrement = parseFloat((pcs / rasio).toFixed(4));
+        
+        const updatedOrder = await prisma.$transaction(async (tx) => {
+            // Deduct stock
+            const newKuantitas = Math.max(0, bahan.kuantitasKg - kgToDecrement);
+            const newStatus = newKuantitas <= 0 ? "Habis" : bahan.status;
+            
+            await tx.bahanBaju.update({
+                where: { id: bahan.id },
+                data: {
+                    kuantitasKg: parseFloat(newKuantitas.toFixed(4)),
+                    status: newStatus
+                }
+            });
+            
+            // Record history
+            await tx.bahanBajuHistory.create({
+                data: {
+                    bahanId: bahan.id,
+                    namaBahan: bahan.nama,
+                    aksi: "RUSAK",
+                    jumlah: kgToDecrement,
+                    stokAkhir: parseFloat(newKuantitas.toFixed(4)),
+                    keterangan: keterangan 
+                        ? `Kerusakan menjahit - ${keterangan}` 
+                        : `Kerusakan menjahit`,
+                    actor: req.body.actor || "System/Admin",
+                    customerName: customerName,
+                    pcs: parseInt(pcs),
+                    orderId: parseInt(id)
+                }
+            });
+            
+            // Update order damagedPcs
+            return await tx.jerseyOrder.update({
+                where: { id: parseInt(id) },
+                data: {
+                    damagedPcs: (order.damagedPcs || 0) + parseInt(pcs)
+                },
+                include: {
+                    details: true
+                }
+            });
+        });
+        
+        res.json(updatedOrder);
+    } catch (error) {
+        console.error("Failed to report damage:", error);
+        res.status(500).json({ error: "Failed to report damage" });
+    }
+});
+
+router.put('/damage/:historyId', async (req, res) => {
+    try {
+        const { historyId } = req.params;
+        const { pcs, keterangan, actor } = req.body;
+
+        if (!pcs || pcs <= 0) {
+            return res.status(400).json({ error: "Valid Pcs is required" });
+        }
+
+        const history = await prisma.bahanBajuHistory.findUnique({
+            where: { id: parseInt(historyId) },
+            include: { bahan: true }
+        });
+
+        if (!history || history.aksi !== 'RUSAK' || !history.orderId) {
+            return res.status(404).json({ error: "Damage history not found or invalid" });
+        }
+
+        const bahan = history.bahan;
+        if (!bahan) {
+            return res.status(404).json({ error: "Associated material not found" });
+        }
+
+        const oldPcs = history.pcs || 0;
+        const newPcs = parseInt(pcs);
+        const diffPcs = newPcs - oldPcs;
+
+        const rasio = bahan.rasioKonversi || 2.5;
+        const oldKg = history.jumlah;
+        const newKg = parseFloat((newPcs / rasio).toFixed(4));
+        const diffKg = newKg - oldKg; // positive means we need more kg (more damage)
+
+        const result = await prisma.$transaction(async (tx) => {
+            // Apply stock diff
+            const currentKuantitas = bahan.kuantitasKg;
+            const newKuantitas = Math.max(0, currentKuantitas - diffKg);
+            const newStatus = newKuantitas <= 0 ? "Habis" : "Tersedia";
+
+            await tx.bahanBaju.update({
+                where: { id: bahan.id },
+                data: {
+                    kuantitasKg: parseFloat(newKuantitas.toFixed(4)),
+                    status: newStatus
+                }
+            });
+
+            // Update history
+            const newKeteranganText = keterangan 
+                ? `Kerusakan menjahit - ${keterangan}` 
+                : `Kerusakan menjahit`;
+
+            const updatedHistory = await tx.bahanBajuHistory.update({
+                where: { id: parseInt(historyId) },
+                data: {
+                    pcs: newPcs,
+                    jumlah: newKg,
+                    keterangan: newKeteranganText,
+                    stokAkhir: parseFloat(newKuantitas.toFixed(4)),
+                    actor: actor || history.actor
+                }
+            });
+
+            // Update order damagedPcs
+            const order = await tx.jerseyOrder.findUnique({
+                where: { id: history.orderId }
+            });
+
+            if (order) {
+                await tx.jerseyOrder.update({
+                    where: { id: order.id },
+                    data: {
+                        damagedPcs: Math.max(0, (order.damagedPcs || 0) + diffPcs)
+                    }
+                });
+            }
+
+            return updatedHistory;
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error("Failed to update damage report:", error);
+        res.status(500).json({ error: "Failed to update damage report" });
+    }
+});
+
+router.get('/:id/damage-history', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const histories = await prisma.bahanBajuHistory.findMany({
+            where: { orderId: parseInt(id), aksi: 'RUSAK' },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(histories);
+    } catch (error) {
+        console.error("Failed to fetch damage history:", error);
+        res.status(500).json({ error: "Failed to fetch damage history" });
     }
 });
 
