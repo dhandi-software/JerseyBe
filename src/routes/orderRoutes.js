@@ -464,6 +464,30 @@ router.patch('/:id/approve-design', async (req, res) => {
     }
 });
 
+// Un-Approve design mockup (Cancel Approval)
+router.patch('/:id/unapprove-design', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Cek dulu apakah statusnya masih DESIGN/LAYOUT
+        const order = await prisma.jerseyOrder.findUnique({ where: { id: parseInt(id) } });
+        if (!order || (order.status !== 'DESAIN' && order.status !== 'LAYOUT')) {
+            return res.status(400).json({ error: "Cannot unapprove design at this stage" });
+        }
+        
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                designStatus: "SENT"
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to unapprove design:", error);
+        res.status(500).json({ error: "Failed to unapprove design" });
+    }
+});
+
 // Reject/Revisi design mockup
 router.patch('/:id/revisi-design', async (req, res) => {
     try {
@@ -548,6 +572,30 @@ router.patch('/:id/approve-layout', async (req, res) => {
     }
 });
 
+// Un-Approve layout (Cancel Approval)
+router.patch('/:id/unapprove-layout', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Cek dulu apakah statusnya masih LAYOUT
+        const order = await prisma.jerseyOrder.findUnique({ where: { id: parseInt(id) } });
+        if (!order || order.status !== 'LAYOUT') {
+            return res.status(400).json({ error: "Cannot unapprove layout at this stage" });
+        }
+        
+        const updated = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                layoutStatus: "SENT"
+            }
+        });
+        res.json(updated);
+    } catch (error) {
+        console.error("Failed to unapprove layout:", error);
+        res.status(500).json({ error: "Failed to unapprove layout" });
+    }
+});
+
 // Reject/Revisi layout mockup
 router.patch('/:id/revisi-layout', async (req, res) => {
     try {
@@ -586,6 +634,54 @@ router.patch('/:id/cancel-layout', async (req, res) => {
     } catch (error) {
         console.error("Failed to cancel layout:", error);
         res.status(500).json({ error: "Failed to cancel layout" });
+    }
+});
+
+// Upload print progress photo
+router.post('/:id/print', upload.single('print'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+        }
+        
+        const printUrl = `/uploads/${req.file.filename}`;
+        
+        const updatedOrder = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                printUrl
+            }
+        });
+        
+        res.json(updatedOrder);
+    } catch (error) {
+        console.error("Failed to upload print photo:", error);
+        res.status(500).json({ error: "Failed to upload print photo" });
+    }
+});
+
+// Upload finishing progress photo
+router.post('/:id/finishing', upload.single('finishing'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!req.file) {
+            return res.status(400).json({ error: "No file uploaded" });
+        }
+        
+        const finishingUrl = `/uploads/${req.file.filename}`;
+        
+        const updatedOrder = await prisma.jerseyOrder.update({
+            where: { id: parseInt(id) },
+            data: {
+                finishingUrl
+            }
+        });
+        
+        res.json(updatedOrder);
+    } catch (error) {
+        console.error("Failed to upload finishing photo:", error);
+        res.status(500).json({ error: "Failed to upload finishing photo" });
     }
 });
 

@@ -101,4 +101,48 @@ const register = async (req, res) => {
     }
 };
 
-module.exports = { login, logout, register };
+const changePassword = async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+        
+        let token = req.cookies?.token;
+        if (!token && req.headers.authorization?.startsWith('Bearer ')) {
+            token = req.headers.authorization.split(' ')[1];
+        }
+
+        if (!token) {
+            return res.status(401).json({ message: 'Unauthorized' });
+        }
+
+        const decoded = jwt.verify(token, SECRET_KEY);
+        const userId = decoded.id;
+
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const isValid = await bcrypt.compare(oldPassword, user.password);
+        if (!isValid) {
+            return res.status(400).json({ message: 'Password lama tidak sesuai' });
+        }
+
+        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { id: userId },
+            data: { password: hashedNewPassword }
+        });
+
+        res.status(200).json({ message: 'Password berhasil diubah' });
+    } catch (error) {
+        console.error('Error changing password:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+module.exports = {
+    login,
+    logout,
+    register,
+    changePassword
+};

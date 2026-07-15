@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,26 +8,21 @@ datasource db {
 }
 
 model User {
-  id       Int    @id @default(autoincrement())
-  username String @unique
-  password String
-  role     String // customer, desain, gudang, manager, admin
-  email    String @unique
-
-  // Relations
-  customer Customer?
-  staff    Staff?
-
-  sentMessages     Message[] @relation("SentMessages")
-  receivedMessages Message[] @relation("ReceivedMessages")
-  deletedMessages  Message[] @relation("DeletedBy")
-
-  // Designer Assignment
-  assignedOrders   JerseyOrder[] @relation("AssignedDesigner")
-
-  // Group Chat Relations
-  adminOfRooms    ChatRoom[]       @relation("RoomAdmin")
-  chatMemberships ChatRoomMember[]
+  id               Int              @id @default(autoincrement())
+  username         String           @unique
+  password         String
+  role             String
+  email            String           @unique
+  bio              String?
+  photo            String?
+  adminOfRooms     ChatRoom[]       @relation("RoomAdmin")
+  chatMemberships  ChatRoomMember[]
+  customer         Customer?
+  assignedOrders   JerseyOrder[]    @relation("AssignedDesigner")
+  receivedMessages Message[]        @relation("ReceivedMessages")
+  sentMessages     Message[]        @relation("SentMessages")
+  staff            Staff?
+  deletedMessages  Message[]        @relation("DeletedBy")
 }
 
 model Customer {
@@ -42,61 +34,53 @@ model Customer {
   address     String?
   category    String?
   memberSince String?
-  
   user        User    @relation(fields: [userId], references: [id])
-
-  // Relations (Placeholder for future Jersey related models)
 }
 
 model Staff {
-  id        Int     @id @default(autoincrement())
-  userId    Int     @unique
-  staffId   String  @unique @default(uuid())
-  nama      String
-  position  String?
-  
-  user      User    @relation(fields: [userId], references: [id])
-
-  // Relations (Placeholder for future Jersey related models)
+  id       Int     @id @default(autoincrement())
+  userId   Int     @unique
+  staffId  String  @unique @default(uuid())
+  nama     String
+  position String?
+  user     User    @relation(fields: [userId], references: [id])
 }
 
 model Message {
-  id             Int      @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   content        String?
   attachmentUrl  String?
-  attachmentName String?
-  attachmentType String? // 'image', 'document', 'none'
+  attachmentType String?
   senderId       Int
-  receiverId     Int? // Nullifier if roomId is present
+  receiverId     Int?
   roomId         Int?
-  isPublic       Boolean  @default(false)
-  isRead         Boolean  @default(false)
-  readByIds      Int[]    @default([]) // For group chat read receipts
-  isDeleted      Boolean  @default(false)
-  isEdited       Boolean  @default(false)
+  isPublic       Boolean   @default(false)
+  isRead         Boolean   @default(false)
+  readByIds      Int[]     @default([])
+  isDeleted      Boolean   @default(false)
+  isEdited       Boolean   @default(false)
   replyToId      Int?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  sender    User      @relation("SentMessages", fields: [senderId], references: [id])
-  receiver  User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
-  room      ChatRoom? @relation(fields: [roomId], references: [id])
-  parent    Message?  @relation("ReplyTo", fields: [replyToId], references: [id])
-  children  Message[] @relation("ReplyTo")
-  deletedBy User[]    @relation("DeletedBy")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  attachmentName String?
+  receiver       User?     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  parent         Message?  @relation("ReplyTo", fields: [replyToId], references: [id])
+  children       Message[] @relation("ReplyTo")
+  room           ChatRoom? @relation(fields: [roomId], references: [id])
+  sender         User      @relation("SentMessages", fields: [senderId], references: [id])
+  deletedBy      User[]    @relation("DeletedBy")
 }
 
 model ChatRoom {
-  id        Int      @id @default(autoincrement())
+  id        Int              @id @default(autoincrement())
   name      String
   adminId   Int
-  isGroup   Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  admin    User             @relation("RoomAdmin", fields: [adminId], references: [id])
-  members  ChatRoomMember[]
-  messages Message[]
+  isGroup   Boolean          @default(true)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  admin     User             @relation("RoomAdmin", fields: [adminId], references: [id])
+  members   ChatRoomMember[]
+  messages  Message[]
 }
 
 model ChatRoomMember {
@@ -104,44 +88,42 @@ model ChatRoomMember {
   roomId   Int
   userId   Int
   joinedAt DateTime @default(now())
-
-  room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room     ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([roomId, userId])
 }
 
-
-
 model JerseyOrder {
-  id             Int                 @id @default(autoincrement())
-  orderId        String              @unique @default(uuid())
-  customerId     Int
-  customerName   String?             // Untuk pelanggan offline / admin
-  customerPhone  String?             // Untuk pelanggan offline / admin
-  designerId     Int?
-  status         String              @default("MENUNGGU") // MENUNGGU, DESAIN, LAYOUT, FINISHING, SELESAI
-  totalAmount    Float
-  designNote     String?
-  designUrl      String?
-  paymentUrl     String?
-  queueNumber    String?
-  isWorking      Boolean             @default(false)
-  mockupUrl      String?
-  designStatus   String              @default("PENDING") // PENDING, SENT, APPROVED, REVISI
-  designFeedback String?
-  layoutUrl      String?
-  layoutStatus   String              @default("PENDING") // PENDING, SENT, APPROVED, REVISI
-  layoutFeedback String?
-  shippingMethod String              @default("PICKUP")
-  shippingAddress String?
-  damagedPcs      Int                 @default(0)
-  recommendedBahanIds Int[]           @default([])
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  
-  designer       User?               @relation("AssignedDesigner", fields: [designerId], references: [id])
-  details        JerseyOrderDetail[]
+  id                  Int                 @id @default(autoincrement())
+  orderId             String              @unique @default(uuid())
+  customerId          Int
+  status              String              @default("MENUNGGU")
+  totalAmount         Float
+  designNote          String?
+  designUrl           String?
+  paymentUrl          String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  designerId          Int?
+  isWorking           Boolean             @default(false)
+  queueNumber         String?
+  designFeedback      String?
+  designStatus        String              @default("PENDING")
+  mockupUrl           String?
+  shippingAddress     String?
+  shippingMethod      String              @default("PICKUP")
+  recommendedBahanIds Int[]               @default([])
+  layoutFeedback      String?
+  layoutStatus        String              @default("PENDING")
+  layoutUrl           String?
+  damagedPcs          Int                 @default(0)
+  customerName        String?
+  customerPhone       String?
+  finishingUrl        String?
+  printUrl            String?
+  designer            User?               @relation("AssignedDesigner", fields: [designerId], references: [id])
+  details             JerseyOrderDetail[]
 }
 
 model JerseyOrderDetail {
@@ -152,43 +134,40 @@ model JerseyOrderDetail {
   playerName   String?
   playerNumber String?
   playerSize   String
-  
   order        JerseyOrder @relation(fields: [orderId], references: [id])
 }
 
 model BahanBaju {
-  id            Int                 @id @default(autoincrement())
+  id            Int                @id @default(autoincrement())
   nama          String
   deskripsi     String?
-  kuantitasKg   Float               @default(0)
-  rasioKonversi Float               @default(1.0)
-  status        String              @default("Tersedia") // Tersedia, Habis
-  harga         Float               @default(0)
-  hargaBeli     Float?              @default(0)
-  buktiNotaUrl  String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   imageUrl      String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-
+  harga         Float              @default(0)
+  kuantitasKg   Float              @default(0)
+  rasioKonversi Float              @default(1.0)
+  status        String             @default("Tersedia")
+  buktiNotaUrl  String?
+  hargaBeli     Float?             @default(0)
   histories     BahanBajuHistory[]
 }
 
 model BahanBajuHistory {
-  id          Int        @id @default(autoincrement())
-  bahanId     Int?
-  namaBahan   String?    // Menampung nama bahan jika item utamanya dihapus
-  aksi        String     // "TAMBAH", "KURANG", "UBAH", "BUAT", "HAPUS"
-  jumlah      Float      // Jumlah yang ditambahkan/dikurangkan
-  stokAkhir   Float      // Stok setelah perubahan
-  hargaBeli   Float?     // Harga beli saat transaksi ini terjadi
-  hargaJual   Float?     // Harga jual saat transaksi ini terjadi
-  totalNilai  Float?     // jumlah x hargaBeli (jika TAMBAH/BUAT) atau jumlah x hargaJual (jika KURANG)
-  keterangan  String?
-  actor       String?    // Aktor yang mengubah stok
-  customerName String?   // Nama pemesan / customer terkait
-  pcs         Int?       // Jumlah pcs rusak (khusus untuk retur barang)
-  orderId     Int?       // ID referensi ke pesanan (khusus retur barang)
-  createdAt   DateTime   @default(now())
-
-  bahan       BahanBaju? @relation(fields: [bahanId], references: [id], onDelete: SetNull)
+  id           Int        @id @default(autoincrement())
+  bahanId      Int?
+  aksi         String
+  jumlah       Float
+  stokAkhir    Float
+  keterangan   String?
+  createdAt    DateTime   @default(now())
+  namaBahan    String?
+  actor        String?
+  hargaBeli    Float?
+  hargaJual    Float?
+  totalNilai   Float?
+  customerName String?
+  orderId      Int?
+  pcs          Int?
+  bahan        BahanBaju? @relation(fields: [bahanId], references: [id])
 }
