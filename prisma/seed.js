@@ -17,7 +17,7 @@ async function main() {
   // 1. Admin
   // ============================================================
   await prisma.user.upsert({
-    where: { email: 'admin@fscv.com' },
+    where: { email: 'admin@fcsv.com' },
     update: {
       username: 'admin',
       role: 'admin',
@@ -25,12 +25,12 @@ async function main() {
     },
     create: {
       username: 'admin',
-      email: 'admin@fscv.com',
+      email: 'admin@fcsv.com',
       password: passwordHash,
       role: 'admin',
       staff: {
         create: {
-            nama: 'Staff FSCV',
+            nama: 'Staff FCSV',
             position: 'Admin'
         }
       }
@@ -41,7 +41,7 @@ async function main() {
   // 2. Manager
   // ============================================================
   await prisma.user.upsert({
-    where: { email: 'manager@fscv.com' },
+    where: { email: 'manager@fcsv.com' },
     update: {
       username: 'manager',
       role: 'manager',
@@ -49,7 +49,7 @@ async function main() {
     },
     create: {
       username: 'manager',
-      email: 'manager@fscv.com',
+      email: 'manager@fcsv.com',
       password: passwordHash,
       role: 'manager',
       staff: {
@@ -65,7 +65,7 @@ async function main() {
   // 3. Desain
   // ============================================================
   await prisma.user.upsert({
-    where: { email: 'desain@fscv.com' },
+    where: { email: 'desain@fcsv.com' },
     update: {
       username: 'desain',
       role: 'desain',
@@ -73,7 +73,7 @@ async function main() {
     },
     create: {
       username: 'desain',
-      email: 'desain@fscv.com',
+      email: 'desain@fcsv.com',
       password: passwordHash,
       role: 'desain',
       staff: {
@@ -89,7 +89,7 @@ async function main() {
   // 4. Gudang
   // ============================================================
   await prisma.user.upsert({
-    where: { email: 'gudang@fscv.com' },
+    where: { email: 'gudang@fcsv.com' },
     update: {
       username: 'gudang',
       role: 'gudang',
@@ -97,12 +97,12 @@ async function main() {
     },
     create: {
       username: 'gudang',
-      email: 'gudang@fscv.com',
+      email: 'gudang@fcsv.com',
       password: passwordHash,
       role: 'gudang',
       staff: {
         create: {
-            nama: 'Gudang FSCV',
+            nama: 'Gudang FCSV',
             position: 'Warehouse'
         }
       }
@@ -249,7 +249,7 @@ async function main() {
         jumlah: 2.4,
         stokAkhir: 47.6,
         keterangan: 'Pemakaian bahan untuk order jersey futsal 2 set (12 pcs)',
-        actor: 'Gudang FSCV',
+        actor: 'Gudang FCSV',
         hargaBeli: 60000,
         hargaJual: 85000,
         totalNilai: 204000,
@@ -330,7 +330,7 @@ async function main() {
   });
 
   // Order 2: Status DESAIN (sedang didesain)
-  const desainerUser = await prisma.user.findUnique({ where: { email: 'desain@fscv.com' } });
+  const desainerUser = await prisma.user.findUnique({ where: { email: 'desain@fcsv.com' } });
 
   const order2 = await prisma.jerseyOrder.upsert({
     where: { orderId: 'SEED-ORDER-002' },
@@ -484,10 +484,10 @@ async function main() {
   console.log('Seeding finished.');
   console.log('');
   console.log('== Akun tersedia ==');
-  console.log('Admin    : admin@fscv.com      / password123');
-  console.log('Manager  : manager@fscv.com    / password123');
-  console.log('Desain   : desain@fscv.com     / password123');
-  console.log('Gudang   : gudang@fscv.com     / password123');
+  console.log('Admin    : admin@fcsv.com      / password123');
+  console.log('Manager  : manager@fcsv.com    / password123');
+  console.log('Desain   : desain@fcsv.com     / password123');
+  console.log('Gudang   : gudang@fcsv.com     / password123');
   console.log('Customer : customer@gmail.com  / password123');
   console.log('');
   console.log('== Kolom baru yang sudah diseed ==');

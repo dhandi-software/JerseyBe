@@ -32,7 +32,7 @@ app.use('/api/bahan-baju', require('./routes/bahanBajuRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {
-    res.send({ message: 'FSCV Backend is running!' });
+    res.send({ message: 'FCSV Backend is running!' });
 });
 
 // Create HTTP server and attach Socket.io
