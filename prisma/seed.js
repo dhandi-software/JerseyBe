@@ -78,7 +78,7 @@ async function main() {
       role: 'desain',
       staff: {
         create: {
-            nama: 'Dhandi Designer',
+            nama: 'Bayu Designer',
             position: 'Designer'
         }
       }
