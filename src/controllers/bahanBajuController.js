@@ -1,11 +1,8 @@
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const bahanBajuService = require('../services/bahanBajuService');
 
 const getAllBahan = async (req, res) => {
     try {
-        const bahan = await prisma.bahanBaju.findMany({
-            orderBy: { createdAt: 'desc' }
-        });
+        const bahan = await bahanBajuService.getAllBahan();
         res.json({ status: 'success', data: bahan });
     } catch (error) {
         console.error(error);
@@ -15,11 +12,18 @@ const getAllBahan = async (req, res) => {
 
 const getHistory = async (req, res) => {
     try {
-        const history = await prisma.bahanBajuHistory.findMany({
-            include: { bahan: true },
-            orderBy: { createdAt: 'desc' }
-        });
+        const history = await bahanBajuService.getHistory();
         res.json({ status: 'success', data: history });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ status: 'error', message: 'Internal server error' });
+    }
+};
+
+const getReturBahan = async (req, res) => {
+    try {
+        const retur = await bahanBajuService.getReturBahan();
+        res.json({ status: 'success', data: retur });
     } catch (error) {
         console.error(error);
         res.status(500).json({ status: 'error', message: 'Internal server error' });
@@ -30,149 +34,70 @@ const createBahan = async (req, res) => {
     const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, actor } = req.body;
     const imageUrl = req.files && req.files.image ? `/uploads/${req.files.image[0].filename}` : null;
     const buktiNotaUrl = req.files && req.files.buktiNota ? `/uploads/${req.files.buktiNota[0].filename}` : null;
-    
-    const parsedKuantitas = parseFloat(kuantitasKg);
-    const finalKuantitas = isNaN(parsedKuantitas) ? 0 : parsedKuantitas;
-    
-    const parsedRasio = parseFloat(rasioKonversi);
-    const finalRasio = isNaN(parsedRasio) ? 1.0 : parsedRasio;
-
-    const finalStatus = status || (finalKuantitas <= 0 ? "Habis" : "Tersedia");
-    
-    const parsedHarga = parseFloat(harga);
-    const finalHarga = isNaN(parsedHarga) ? 0 : parsedHarga;
-
-    const parsedHargaBeli = parseFloat(hargaBeli);
-    const finalHargaBeli = isNaN(parsedHargaBeli) ? 0 : parsedHargaBeli;
 
     try {
-        console.log("Creating Bahan:", { nama, finalKuantitas, finalRasio, finalStatus, finalHarga });
-        const newBahan = await prisma.bahanBaju.create({
-            data: {
-                nama,
-                deskripsi,
-                kuantitasKg: finalKuantitas,
-                rasioKonversi: finalRasio,
-                status: finalStatus,
-                harga: finalHarga,
-                hargaBeli: finalHargaBeli,
-                imageUrl,
-                buktiNotaUrl
-            }
-        });
-
-        await prisma.bahanBajuHistory.create({
-            data: {
-                bahanId: newBahan.id,
-                namaBahan: newBahan.nama,
-                aksi: "BUAT",
-                jumlah: newBahan.kuantitasKg,
-                stokAkhir: newBahan.kuantitasKg,
-                hargaBeli: newBahan.hargaBeli,
-                hargaJual: newBahan.harga,
-                totalNilai: newBahan.hargaBeli || 0,
-                keterangan: "Bahan baju baru ditambahkan",
-                actor: actor || "System"
-            }
+        const newBahan = await bahanBajuService.createBahan({
+            nama,
+            deskripsi,
+            kuantitasKg,
+            rasioKonversi,
+            status,
+            harga,
+            hargaBeli,
+            actor,
+            imageUrl,
+            buktiNotaUrl
         });
 
         res.json({ status: 'success', data: newBahan });
     } catch (error) {
-        console.error("CREATE_BAHAN_ERROR:", error);
+        console.error('CREATE_BAHAN_ERROR:', error);
         res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
     }
 };
 
 const updateBahan = async (req, res) => {
     const { id } = req.params;
-    const { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, keterangan_ubah, deleteImage, deleteBuktiNota, actor } = req.body;
+    const {
+        nama,
+        deskripsi,
+        kuantitasKg,
+        rasioKonversi,
+        status,
+        harga,
+        hargaBeli,
+        keterangan_ubah,
+        deleteImage,
+        deleteBuktiNota,
+        actor
+    } = req.body;
+
+    const newUploadedImageUrl = req.files && req.files.image ? `/uploads/${req.files.image[0].filename}` : undefined;
+    const newUploadedBuktiNotaUrl = req.files && req.files.buktiNota ? `/uploads/${req.files.buktiNota[0].filename}` : undefined;
 
     try {
-        const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
-        if (!existingBahan) return res.status(404).json({ message: 'Not found' });
-
-        const parsedKuantitas = parseFloat(kuantitasKg);
-        const updatedKuantitas = isNaN(parsedKuantitas) ? existingBahan.kuantitasKg : parsedKuantitas;
-        
-        const parsedRasio = parseFloat(rasioKonversi);
-        const updatedRasio = isNaN(parsedRasio) ? existingBahan.rasioKonversi : parsedRasio;
-
-        const updatedStatus = status || (updatedKuantitas <= 0 ? "Habis" : "Tersedia");
-        
-        const parsedHarga = parseFloat(harga);
-        const updatedHarga = isNaN(parsedHarga) ? existingBahan.harga : parsedHarga;
-
-        const parsedHargaBeli = parseFloat(hargaBeli);
-        const updatedHargaBeli = isNaN(parsedHargaBeli) ? (existingBahan.hargaBeli || 0) : parsedHargaBeli;
-
-        const selisih = updatedKuantitas - existingBahan.kuantitasKg;
-
-        let newImageUrl = existingBahan.imageUrl;
-        if (req.files && req.files.image) {
-            newImageUrl = `/uploads/${req.files.image[0].filename}`;
-        } else if (deleteImage === "true") {
-            newImageUrl = null;
-        }
-
-        let newBuktiNotaUrl = existingBahan.buktiNotaUrl;
-        if (req.files && req.files.buktiNota) {
-            newBuktiNotaUrl = `/uploads/${req.files.buktiNota[0].filename}`;
-        } else if (deleteBuktiNota === "true") {
-            newBuktiNotaUrl = null;
-        }
-
-        const updatedBahan = await prisma.bahanBaju.update({
-            where: { id: parseInt(id) },
-            data: { 
-                nama, 
-                deskripsi, 
-                kuantitasKg: updatedKuantitas, 
-                rasioKonversi: updatedRasio,
-                status: updatedStatus,
-                harga: updatedHarga,
-                hargaBeli: updatedHargaBeli,
-                imageUrl: newImageUrl,
-                buktiNotaUrl: newBuktiNotaUrl
-            }
+        const updatedBahan = await bahanBajuService.updateBahan(id, {
+            nama,
+            deskripsi,
+            kuantitasKg,
+            rasioKonversi,
+            status,
+            harga,
+            hargaBeli,
+            keterangan_ubah,
+            deleteImage,
+            deleteBuktiNota,
+            actor,
+            newUploadedImageUrl,
+            newUploadedBuktiNotaUrl
         });
-
-        if (selisih !== 0) {
-            const isTambah = selisih > 0;
-            const absSelisih = Math.abs(selisih);
-            await prisma.bahanBajuHistory.create({
-                data: {
-                    bahanId: existingBahan.id,
-                    namaBahan: updatedBahan.nama,
-                    aksi: isTambah ? "TAMBAH" : "KURANG",
-                    jumlah: absSelisih,
-                    stokAkhir: updatedKuantitas,
-                    hargaBeli: updatedBahan.hargaBeli,
-                    hargaJual: updatedBahan.harga,
-                    totalNilai: isTambah ? Math.max(0, (updatedBahan.hargaBeli || 0) - (existingBahan.hargaBeli || 0)) : 0,
-                    keterangan: keterangan_ubah || (isTambah ? "Penambahan ketersediaan" : "Pengurangan ketersediaan"),
-                    actor: actor || "System"
-                }
-            });
-        } else if (nama !== existingBahan.nama || deskripsi !== existingBahan.deskripsi || newImageUrl !== existingBahan.imageUrl || updatedRasio !== existingBahan.rasioKonversi || updatedStatus !== existingBahan.status) {
-             await prisma.bahanBajuHistory.create({
-                data: {
-                    bahanId: existingBahan.id,
-                    namaBahan: updatedBahan.nama,
-                    aksi: "UBAH",
-                    jumlah: 0,
-                    stokAkhir: updatedKuantitas,
-                    hargaBeli: updatedBahan.hargaBeli,
-                    hargaJual: updatedBahan.harga,
-                    totalNilai: 0,
-                    keterangan: "Pembaruan detail ketersediaan/rasio/status/gambar",
-                    actor: actor || "System"
-                }
-            });
-        }
 
         res.json({ status: 'success', data: updatedBahan });
     } catch (error) {
-        console.error("UPDATE_BAHAN_ERROR:", error);
+        console.error('UPDATE_BAHAN_ERROR:', error);
+        if (error.statusCode === 404) {
+            return res.status(404).json({ message: error.message });
+        }
         res.status(500).json({ status: 'error', message: error.message || 'Internal server error' });
     }
 };
@@ -180,51 +105,15 @@ const updateBahan = async (req, res) => {
 const deleteBahan = async (req, res) => {
     const { id } = req.params;
     const { actor } = req.query;
+
     try {
-        const existingBahan = await prisma.bahanBaju.findUnique({ where: { id: parseInt(id) } });
-        if (!existingBahan) return res.status(404).json({ message: 'Not found' });
-
-        // Record deletion in history BEFORE deleting the item
-        await prisma.bahanBajuHistory.create({
-            data: {
-                bahanId: existingBahan.id,
-                namaBahan: existingBahan.nama,
-                aksi: "HAPUS",
-                jumlah: existingBahan.kuantitasKg,
-                stokAkhir: 0,
-                hargaBeli: existingBahan.hargaBeli,
-                hargaJual: existingBahan.harga,
-                totalNilai: 0,
-                keterangan: `Menghapus bahan ${existingBahan.nama} (Ketersediaan terakhir: ${existingBahan.kuantitasKg} kg)`,
-                actor: actor || "System"
-            }
-        });
-
-        await prisma.bahanBaju.delete({
-            where: { id: parseInt(id) }
-        });
-        res.json({ status: 'success', message: 'Deleted' });
+        const result = await bahanBajuService.deleteBahan(id, actor);
+        res.json({ status: 'success', message: result.message });
     } catch (error) {
         console.error(error);
-        res.status(500).json({ status: 'error', message: 'Internal server error' });
-    }
-};
-
-const getReturBahan = async (req, res) => {
-    try {
-        const retur = await prisma.bahanBajuHistory.findMany({
-            where: {
-                OR: [
-                    { keterangan: { contains: 'rusak', mode: 'insensitive' } },
-                    { keterangan: { contains: 'reject', mode: 'insensitive' } }
-                ]
-            },
-            include: { bahan: true },
-            orderBy: { createdAt: 'desc' }
-        });
-        res.json({ status: 'success', data: retur });
-    } catch (error) {
-        console.error(error);
+        if (error.statusCode === 404) {
+            return res.status(404).json({ message: error.message });
+        }
         res.status(500).json({ status: 'error', message: 'Internal server error' });
     }
 };

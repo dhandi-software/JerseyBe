@@ -1,23 +1,13 @@
-const prisma = require('../prisma');
+const userRepository = require('../repositories/userRepository');
 const bcrypt = require('bcrypt');
+const prisma = require('../config/prisma');
 
 const findUserByIdentifier = async (identifier) => {
-    return await prisma.user.findFirst({
-        where: {
-            OR: [
-                { username: identifier },
-                { email: identifier }
-            ]
-        },
-        include: {
-            customer: true,
-            staff: true
-        }
-    });
+    return await userRepository.findUserByIdentifier(identifier);
 };
 
 const createUser = async (userData) => {
-    const { username, password, email, role, name, ...otherDetails } = userData;
+    const { username, password, email, role, name } = userData;
     const hashedPassword = await bcrypt.hash(password, 10);
 
     return await prisma.user.create({
@@ -29,17 +19,17 @@ const createUser = async (userData) => {
             ...(role.toLowerCase() === 'customer' && {
                 customer: {
                     create: {
-                        nama: name,
+                        nama: name
                     }
                 }
             }),
             ...(['desain', 'manager', 'gudang', 'admin'].includes(role.toLowerCase()) && {
                 staff: {
                     create: {
-                        nama: name,
+                        nama: name
                     }
                 }
-            }),
+            })
         }
     });
 };
