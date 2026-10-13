@@ -1,6 +1,8 @@
-# Jersey Baju - Backend
+# Jersey Baju - Backend (FCSV_BE)
 
-Backend service for the Jersey Baju application.
+Backend service for the FCSV Jersey Baju platform. Built with Express.js, Prisma ORM, and PostgreSQL.
+
+---
 
 ## 🚀 Getting Started
 
@@ -12,12 +14,52 @@ npm install
 ### ⚡ Development
 ```bash
 npm run dev
+# or
+node src/index.js
 ```
 
 ### 🧪 Database (Prisma)
 ```bash
+npx prisma generate
+npx prisma db push
+# or
 npx prisma migrate dev
 ```
+
+### 🐳 Docker Services
+```bash
+docker compose up -d
+```
+
+---
+
+## 🛡️ Security & Zero-Trust Architecture
+
+Aplikasi ini menerapkan standar keamanan **Zero-Trust** yang sangat ketat:
+
+1. **Zero-Trust Database Verification (`authMiddleware.js`)**
+   - Setiap request yang terotentikasi memverifikasi keberadaan dan status pengguna langsung ke basis data PostgreSQL (`prisma.user.findUnique`).
+   - Token dengan role atau id palsu/kadaluwarsa yang telah dihapus di database otomatis ditolak (401/403).
+
+2. **Perlindungan Injeksi SQL & NoSQL / Prisma Operator (`authService.js` & `userRepository.js`)**
+   - Runtime type-checking ketat (`typeof username === 'string'`) mencegah eksploitasi filter Prisma Object Injection (contoh: `{ username: { not: "" } }`).
+   - Pencarian pengguna menggunakan operator skalar presisi `{ equals: cleanString }`.
+
+3. **Perlindungan IDOR (Insecure Direct Object Reference) (`orderController.js`)**
+   - Akses data dan pembuatan pesanan customer selalu dipaksa menggunakan `req.user.id` dari database. Customer tidak dapat menyusup atau melihat pesanan customer lain.
+
+4. **Sanitasi Kredensial (Password Hash Stripping)**
+   - Hash password (`bcrypt`) secara konsisten disaring dan dihilangkan dari seluruh return object profil, detail user, maupun daftar pengguna admin.
+
+5. **Anti Foreign-Key Crash pada Penghapusan Akun (`userService.js`)**
+   - Transaksi database atomik (`deleteSingleUserInTx`) membersihkan keterikatan referensi desainer pada pesanan, riwayat pesan, keanggotaan ruang chat, serta profil customer/staff sebelum menghapus user.
+
+6. **Path Traversal & WebP Conversion (`index.js` & `upload.js`)**
+   - Direktori static file upload `/uploads` diamankan dari teknik dot-dot directory traversal (`../`).
+   - Seluruh unggahan gambar otomatis dioptimalkan dan dikonversi ke format **WebP** berkinerja tinggi, dengan fallback otomatis untuk format legacy.
+
+7. **Zero-Secret Leakage Guarantee**
+   - Kredensial database, JWT Secret, dan API key tersimpan eksklusif di environment backend dan diabaikan dari version control (`.gitignore`).
 
 ---
 
@@ -25,119 +67,97 @@ npx prisma migrate dev
 
 Seluruh endpoint API menggunakan prefix `/api`.
 
-### 🔐 Authentication Routes (`/api/auth`)
-Digunakan untuk mengelola sesi pengguna.
+### 🔐 Authentication (`/api/auth`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/login` | Otentikasi user & penerbitan token JWT | Publik |
+| **POST** | `/register` | Pendaftaran akun customer baru | Publik |
+| **POST** | `/logout` | Invalidasi sesi user | Terotentikasi |
+| **PUT** | `/change-password` | Ganti password akun aktif | Terotentikasi |
 
-| Method | Endpoint | Description | Middleware | Request Body |
-| :--- | :--- | :--- | :--- | :--- |
-| **POST** | `/login` | Melakukan login pengguna. | - | `{"email": "string", "password": "string"}` |
-| **POST** | `/logout` | Melakukan logout pengguna. | - | - |
+### 👤 User Self-Service & Compatibility (`/api/user` & `/api/profile`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/api/profile` | Profil akun pengguna yang sedang login | Terotentikasi |
+| **GET** | `/api/profile/:id` | Mengambil detail profil berdasarkan user ID | Terotentikasi |
+| **PUT** | `/api/profile/:id` | Update nama, bio, dan foto profil (WebP) | Pemilik / Admin |
+| **GET** | `/api/user/profile` | Alias profil akun aktif | Terotentikasi |
+| **PUT** | `/api/user/change-password` | Alias ganti password akun aktif | Terotentikasi |
 
-### 🛡️ Admin & User Management (`/api/admin`)
-Digunakan oleh Admin/Manager untuk mengelola pengguna dan melihat statistik dashboard.
+### 🛡️ Admin & Manager Management (`/api/admin`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **POST** | `/create-customer` | Membuat akun customer secara manual | Admin, Manager |
+| **POST** | `/create-staff` | Membuat akun staf (Admin, Manager, Desain, Gudang) | Admin, Manager |
+| **GET** | `/users` | Mengambil seluruh daftar pengguna (Password aman) | Admin, Manager |
+| **GET** | `/users/count` | Jumlah user terdaftar per role (`?role=...`) | Admin, Manager |
+| **GET** | `/users-role` | Filter daftar user berdasarkan role | Admin, Manager |
+| **GET** | `/users/:id` | Detail spesifik profil user | Admin, Manager |
+| **PUT** | `/users/:id` | Update data pengguna / staf / customer | Admin, Manager |
+| **DELETE**| `/users/:id` | Hapus akun tunggal secara aman | Admin, Manager |
+| **POST** | `/users/batch-delete`| Hapus akun massal dalam transaksi database aman | Admin, Manager |
+| **GET** | `/designers` | Daftar staf desainer aktif | Admin, Manager, Desain, Gudang |
+| **GET** | `/dashboard-stats` | Statistik omset & status pesanan dashboard | Admin, Manager |
+| **GET** | `/omset-report` | Laporan omset terperinci berdasarkan rentang waktu | Admin, Manager |
+| **GET** | `/chat-customers` | Daftar customer aktif percakapan | Admin, Manager, Desain, Gudang |
 
-| Method | Endpoint | Description | Middleware | Request Body |
-| :--- | :--- | :--- | :--- | :--- |
-| **POST** | `/create-customer` | Membuat akun customer baru. | Admin | `{"email": "string", "password": "string", "nama": "string"}` |
-| **POST** | `/create-staff` | Membuat akun staff internal. | Admin/Manager | `{"email": "string", "password": "string", "nama": "string", "role": "string"}` |
-| **GET** | `/users/count` | Mendapatkan jumlah user per role. | Admin | `?role=string` (query) |
-| **GET** | `/users-role` | Mendapatkan daftar user per role. | Admin | `?role=string` (query) |
-| **GET** | `/users/:id` | Mendapatkan detail profil user. | Admin | - |
-| **PUT** | `/users/:id` | Mengupdate data user/profil. | Admin | `{"email": "string", "nama": "string", "phone": "string", ...}` |
-| **DELETE** | `/users/:id` | Menghapus user secara permanen. | Admin | - |
-| **GET** | `/dashboard-stats` | Statistik lengkap untuk dashboard. | Admin | - |
-| **GET** | `/designers` | Mendapatkan daftar seluruh designer. | Admin | - |
+### 🛒 Jersey Order Management (`/api/orders`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/track/:orderId` | Pelacakan status & progres pesanan | Publik |
+| **POST** | `/` | Membuat pesanan jersey baru | Customer |
+| **GET** | `/` | Daftar seluruh pesanan produksi | Terotentikasi |
+| **PUT** | `/:id` | Memperbarui detail pesanan | Terotentikasi |
+| **PATCH**| `/:id/status` | Update tahapan status pesanan / assign designer | Admin, Manager, Desain |
+| **GET** | `/customer/:customerId` | Riwayat pesanan milik customer | Customer (Self), Admin |
+| **GET** | `/designer/:designerId` | Tugas pesanan milik staf desainer | Desain, Admin |
+| **POST** | `/:id/mockup` | Upload file mockup desain jersey (WebP) | Desain |
+| **PATCH**| `/:id/approve-design` | Persetujuan mockup desain oleh customer | Customer, Admin |
+| **PATCH**| `/:id/revisi-design` | Permintaan revisi desain dengan catatan feedback | Customer |
+| **POST** | `/:id/layout` | Upload layout pola cetak jersey | Desain |
+| **PATCH**| `/:id/approve-layout` | Persetujuan layout pola oleh tim | Internal |
+| **POST** | `/:id/print` | Upload bukti cetak sublimasi kain | Internal |
+| **POST** | `/:id/finishing` | Upload bukti jahit & QC finishing | Internal |
+| **POST** | `/:id/damage` | Pencatatan kendala / kerusakan potong & jahit | Gudang, Admin |
+| **GET** | `/:id/damage-history` | Riwayat log kerusakan pesanan | Internal |
 
-### 🛒 Order Management (`/api/orders`)
-Sistem pemesanan jersey mulai dari pembuatan hingga pelacakan.
+### 📦 Inventaris Kain & Produk (`/api/bahan-baju`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/` | Katalog bahan jersey & produk kain | Publik (Tamu & Customer) |
+| **GET** | `/history` | Riwayat log mutasi stok bahan | Admin, Gudang, Manager |
+| **GET** | `/retur` | Daftar pencatatan retur bahan | Admin, Gudang, Manager |
+| **POST** | `/` | Tambah bahan kain baru (Auto-WebP) | Admin, Gudang |
+| **PUT** | `/:id` | Update data bahan, harga, dan kuantitas stok | Admin, Gudang |
+| **DELETE**| `/:id` | Hapus data bahan baku | Admin, Gudang |
 
-| Method | Endpoint | Description | Middleware | Request Body |
-| :--- | :--- | :--- | :--- | :--- |
-| **POST** | `/` | Membuat pesanan jersey baru. | Customer | `{"customerId": 1, "totalAmount": 0, "details": [...]}` |
-| **GET** | `/` | Mengambil seluruh daftar pesanan. | Admin | - |
-| **PATCH** | `/:id/status` | Update status pesanan / assign designer. | Admin | `{"status": "PROSES", "designerId": 1}` |
-| **GET** | `/customer/:customerId` | Daftar pesanan milik customer. | Customer | - |
-| **GET** | `/designer/:designerId` | Tugas pesanan untuk designer. | Designer | - |
-| **GET** | `/track/:orderId` | Melacak pesanan (Publik). | - | - |
-
-### 📦 Inventaris (Bahan Baju) (`/api/bahan-baju`)
-Manajemen stok bahan baku kain dan harga produk.
-
-| Method | Endpoint | Description | Middleware | Request Body |
-| :--- | :--- | :--- | :--- | :--- |
-| **GET** | `/` | Daftar seluruh bahan baku (+ Harga & Stok). | Admin | - |
-| **GET** | `/history` | Log aktivitas keluar/masuk stok. | Admin | - |
-| **POST** | `/` | Menambah bahan baru (+ Gambar & Harga). | Admin | `multipart/form-data` (`nama`, `deskripsi`, `stok`, `harga`, `image`) |
-| **PUT** | `/:id` | Update data bahan, stok, atau harga. | Admin | `multipart/form-data` (`nama`, `deskripsi`, `stok`, `harga`, `keterangan_ubah`, `deleteImage`, `image`) |
-| **DELETE** | `/:id` | Hapus bahan secara permanen. | Admin | - |
-
-### 💬 Chat Service (`/api/chat`)
-Komunikasi real-time antar pengguna.
-
-| Method | Endpoint | Description | Middleware | Request Body |
-| :--- | :--- | :--- | :--- | :--- |
-| **GET** | `/contacts/:userId` | Daftar kontak dan pesan terakhir. | Auth | - |
-| **GET** | `/history/:userId/:other`| Riwayat pesan percakapan. | Auth | - |
-| **GET** | `/unread/:userId` | Jumlah total pesan belum dibaca. | Auth | - |
-| **POST** | `/upload` | Upload lampiran file chat. | Auth | `multipart/form-data` |
-| **POST** | `/groups` | Membuat grup chat baru. | Auth | `{"name": "string", "members": [id]}` |
-| **POST** | `/groups/:id/members` | Menambah anggota grup. | Auth | `{"userIds": [id]}` |
-| **DELETE** | `/groups/:id/members/:uid`| Mengeluarkan anggota grup. | Auth | - |
-
----
-
-## 👥 Role-Based API Access
-
-Berikut adalah ringkasan endpoint yang dikelompokkan berdasarkan peran pengguna (Role) untuk memudahkan integrasi frontend:
-
-### 👤 Customer Endpoints
-- **Authentication**: `POST /api/auth/login`, `POST /api/auth/logout`
-- **Orders**: 
-    - `POST /api/orders` (Membuat pesanan baru)
-    - `GET /api/orders/customer/:customerId` (Riwayat pesanan pribadi)
-    - `GET /api/orders/track/:orderId` (Lacak status pesanan tanpa login)
-- **Chat**: 
-    - `GET /api/chat/contacts/:userId` (Chat dengan Admin/Designer)
-    - `GET /api/chat/history/:userId/:other` (Riwayat percakapan)
-    - `POST /api/chat/upload` (Kirim bukti pembayaran atau referensi desain)
-
-### 🎨 Designer Endpoints
-- **Orders**: 
-    - `GET /api/orders/designer/:designerId` (Daftar tugas desain yang masuk)
-    - `PATCH /api/orders/:id/status` (Update status pengerjaan desain: PROSES/SELESAI)
-- **Chat**: 
-    - `GET /api/chat/contacts/:userId` (Komunikasi dengan Customer/Admin)
-    - `POST /api/chat/upload` (Kirim file preview desain)
-
-### 🛠️ Admin & Manager Endpoints
-- **User MGMT**: `POST /api/admin/create-customer`, `POST /api/admin/create-staff`, `DELETE /api/admin/users/:id`
-- **Inventory**: Seluruh endpoint `/api/bahan-baju` (Manajemen kain & stok)
-- **Orders**: `GET /api/orders` (Pantau seluruh pesanan), `PATCH /api/orders/:id/status` (Assign designer)
-- **Stats**: `GET /api/admin/dashboard-stats` (Monitoring statistik bisnis)
+### 💬 Real-Time Chat Service (`/api/chat`)
+| Method | Endpoint | Deskripsi | Akses |
+| :--- | :--- | :--- | :--- |
+| **GET** | `/contacts/:userId` | Daftar kontak dan pesan terakhir (Partisipan saja) | Terotentikasi |
+| **GET** | `/history/:userId/:other`| Riwayat pesan percakapan aman | Terotentikasi |
+| **GET** | `/unread/:userId` | Jumlah pesan belum dibaca | Terotentikasi |
+| **POST** | `/upload` | Unggah lampiran chat (Gambar WebP / Dokumen) | Terotentikasi |
+| **POST** | `/groups` | Membuat grup chat kolaborasi order | Terotentikasi |
+| **POST** | `/groups/:id/members` | Tambah anggota ke grup chat | Terotentikasi |
+| **DELETE**| `/groups/:id/members/:uid`| Hapus anggota dari grup chat | Terotentikasi |
 
 ---
 
-## 🔌 Socket.io Events
+## 🔌 Socket.io Real-Time Events
 
-Sistem chat menggunakan **Socket.io** untuk pengiriman pesan instan.
-
-#### ⬆️ Client to Server (Emit)
-- `join`: `userId` (Join ke room pribadi & grup)
-- `send_message`: `{ senderId, receiverId, content, ... }`
-- `mark_read`: Menandai pesan telah dibaca.
-- `edit_message`: Mengubah isi pesan.
-- `delete_message`: Menghapus pesan (Unsend).
-
-#### ⬇️ Server to Client (Listen)
-- `receive_message`: Menerima pesan baru.
-- `message_sent`: Konfirmasi pesan tersimpan.
-- `messages_read`: Notifikasi pesan dibaca.
-- `message_deleted`: Notifikasi pesan dihapus.
+- `join`: Join room pengguna dan room grup.
+- `send_message`: Mengirimkan pesan real-time ke room tujuan.
+- `mark_read`: Menandai pesan telah dibaca secara live.
+- `receive_message`: Menerima pesan baru secara langsung di UI.
+- `message_deleted`: Sinkronisasi pesan yang ditarik/dihapus.
 
 ---
 
 ## 🛠️ Tech Stack
+- **Runtime:** Node.js
 - **Framework:** Express.js
-- **Database:** PostgreSQL / SQLite (via Prisma)
-- **Real-time:** Socket.io
-- **ORM:** Prisma
+- **Database:** PostgreSQL (via Prisma ORM)
+- **Image Processing:** Sharp (Auto WebP Optimization)
+- **Security:** Bcrypt, JSON Web Token (JWT), Zero-Trust live DB validation, CORS sandbox
+- **Real-Time:** Socket.io

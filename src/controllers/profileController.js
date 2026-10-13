@@ -2,8 +2,11 @@ const userService = require('../services/userService');
 
 const getProfile = async (req, res) => {
     try {
-        const { id } = req.params;
-        const profile = await userService.getProfile(id);
+        const targetId = req.params.id || req.user?.id;
+        if (!targetId) {
+            return res.status(400).json({ message: 'User ID is required' });
+        }
+        const profile = await userService.getProfile(targetId);
 
         res.status(200).json({
             code: 200,
@@ -23,6 +26,14 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         const { id } = req.params;
+        const targetUserId = parseInt(id, 10);
+        const currentUserId = parseInt(req.user?.id, 10);
+        const role = req.user?.role?.toLowerCase();
+
+        if (currentUserId !== targetUserId && role !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden: Tidak dapat mengubah profil pengguna lain' });
+        }
+
         const { name, bio } = req.body;
 
         let photoUrl;

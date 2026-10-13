@@ -162,7 +162,6 @@ const getUserById = async (id) => {
         id: user.id,
         email: user.email,
         role: user.role,
-        password: user.password,
         ...(user.customer ? user.customer : {}),
         ...(user.staff ? user.staff : {})
     };
@@ -215,23 +214,99 @@ const updateUser = async (id, { email, password, role, ...profileData }) => {
     return { message: 'User updated successfully' };
 };
 
+const getAllUsers = async () => {
+    return await prisma.user.findMany({
+        select: {
+            id: true,
+            username: true,
+            email: true,
+            role: true,
+            photo: true,
+            bio: true,
+            customer: true,
+            staff: true
+        },
+        orderBy: { id: 'asc' }
+    });
+};
+
+const deleteSingleUserInTx = async (tx, userId) => {
+    const id = parseInt(userId, 10);
+    if (isNaN(id)) return false;
+
+    const user = await tx.user.findUnique({ where: { id } });
+    if (!user) {
+        return false;
+    }
+
+    await tx.jerseyOrder.updateMany({
+        where: { designerId: id },
+        data: { designerId: null, isWorking: false }
+    });
+
+    await tx.message.deleteMany({
+        where: {
+            OR: [
+                { senderId: id },
+                { receiverId: id }
+            ]
+        }
+    });
+
+    await tx.chatRoomMember.deleteMany({
+        where: { userId: id }
+    });
+
+    await tx.chatRoom.deleteMany({
+        where: { adminId: id }
+    });
+
+    if (user.role === 'customer') {
+        await tx.customer.deleteMany({ where: { userId: id } });
+    } else {
+        await tx.staff.deleteMany({ where: { userId: id } });
+    }
+
+    await tx.user.delete({ where: { id } });
+    return true;
+};
+
 const deleteUser = async (id) => {
     return await prisma.$transaction(async (tx) => {
-        const user = await tx.user.findUnique({ where: { id: parseInt(id) } });
-        if (!user) {
+        const deleted = await deleteSingleUserInTx(tx, id);
+        if (!deleted) {
             const error = new Error('User not found');
             error.statusCode = 404;
             throw error;
         }
-
-        if (user.role === 'customer') {
-            await tx.customer.delete({ where: { userId: parseInt(id) } });
-        } else if (['desain', 'manager', 'gudang', 'admin'].includes(user.role)) {
-            await tx.staff.delete({ where: { userId: parseInt(id) } });
-        }
-
-        await tx.user.delete({ where: { id: parseInt(id) } });
         return { message: 'User deleted successfully' };
+    });
+};
+
+const deleteUsersBatch = async (ids) => {
+    if (!Array.isArray(ids) || ids.length === 0) {
+        const error = new Error('Daftar ID user harus berupa array tidak kosong');
+        error.statusCode = 400;
+        throw error;
+    }
+    const cleanIds = ids.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
+    if (cleanIds.length === 0) {
+        const error = new Error('Tidak ada ID valid untuk dihapus');
+        error.statusCode = 400;
+        throw error;
+    }
+
+    return await prisma.$transaction(async (tx) => {
+        let deletedCount = 0;
+        for (const id of cleanIds) {
+            const deleted = await deleteSingleUserInTx(tx, id);
+            if (deleted) deletedCount++;
+        }
+        return {
+            status: 'success',
+            message: `${deletedCount} user berhasil dihapus`,
+            count: deletedCount
+        };
     });
 };
 
@@ -275,8 +350,10 @@ module.exports = {
     getUserCountByRole,
     getUsersByRole,
     getUserById,
+    getAllUsers,
     updateUser,
     deleteUser,
+    deleteUsersBatch,
     getDesigners,
     getAllChatCustomers
 };

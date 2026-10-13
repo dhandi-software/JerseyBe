@@ -3,13 +3,20 @@ const router = express.Router();
 const orderController = require('../controllers/orderController');
 const upload = require('../middleware/upload');
 
-// Order CRUD & tracking
+const { authenticateToken } = require('../middleware/authMiddleware');
+
+// Public tracking for receipt/order lookup
+router.get('/track/:orderId', orderController.trackOrder);
+
+// Authenticated order management
+router.use(authenticateToken);
+
+// Order CRUD & queries
 router.post('/', orderController.createOrder);
 router.get('/', orderController.getAllOrders);
 router.patch('/:id/status', orderController.updateOrderStatus);
 router.get('/customer/:customerId', orderController.getOrdersByCustomer);
 router.get('/designer/:designerId', orderController.getOrdersByDesigner);
-router.get('/track/:orderId', orderController.trackOrder);
 router.put('/:id', orderController.updateOrder);
 
 // Design & Mockup workflow

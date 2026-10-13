@@ -5,8 +5,10 @@ const {
     createTeamInternal,
     getUserCountByRole,
     getUsersByRole,
+    getAllUsers,
     updateUser,
     deleteUser,
+    deleteUsersBatch,
     getUserById,
     getDashboardStats,
     getAllChatCustomers,
@@ -14,19 +16,24 @@ const {
     getOmsetReport
 } = require('../controllers/adminController');
 
-// Routes updated to use commercial terminology
-router.post('/create-customer', createCustomer);
-router.post('/create-staff', createTeamInternal);
+const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
 
-router.get('/users/count', getUserCountByRole);
-router.get('/users-role', getUsersByRole);
-router.get('/designers', getDesigners);
-router.get('/dashboard-stats', getDashboardStats);
-router.get('/omset-report', getOmsetReport);
-router.get('/chat-customers', getAllChatCustomers);
+router.use(authenticateToken);
 
-router.get('/users/:id', getUserById);
-router.put('/users/:id', updateUser);
-router.delete('/users/:id', deleteUser);
+router.post('/create-customer', authorizeRoles('admin', 'manager'), createCustomer);
+router.post('/create-staff', authorizeRoles('admin', 'manager'), createTeamInternal);
+
+router.get('/users/count', authorizeRoles('admin', 'manager'), getUserCountByRole);
+router.get('/users-role', authorizeRoles('admin', 'manager'), getUsersByRole);
+router.get('/users', authorizeRoles('admin', 'manager'), getAllUsers);
+router.post('/users/batch-delete', authorizeRoles('admin', 'manager'), deleteUsersBatch);
+router.get('/designers', authorizeRoles('admin', 'manager', 'desain', 'gudang'), getDesigners);
+router.get('/dashboard-stats', authorizeRoles('admin', 'manager'), getDashboardStats);
+router.get('/omset-report', authorizeRoles('admin', 'manager'), getOmsetReport);
+router.get('/chat-customers', authorizeRoles('admin', 'manager', 'desain', 'gudang'), getAllChatCustomers);
+
+router.get('/users/:id', authorizeRoles('admin', 'manager'), getUserById);
+router.put('/users/:id', authorizeRoles('admin', 'manager'), updateUser);
+router.delete('/users/:id', authorizeRoles('admin', 'manager'), deleteUser);
 
 module.exports = router;

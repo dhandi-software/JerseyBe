@@ -13,7 +13,10 @@ const getDashboardStats = async ({ year, month }) => {
 
     const accOrders = await prisma.jerseyOrder.findMany({
         where: {
-            status: { notIn: ['MENUNGGU', 'DITOLAK'] }
+            status: { notIn: ['MENUNGGU', 'DITOLAK'] },
+            NOT: {
+                orderId: { startsWith: 'SEED-' }
+            }
         },
         select: {
             id: true,
@@ -140,6 +143,11 @@ const getDashboardStats = async ({ year, month }) => {
     }
 
     const latestOrdersRaw = await prisma.jerseyOrder.findMany({
+        where: {
+            NOT: {
+                orderId: { startsWith: 'SEED-' }
+            }
+        },
         orderBy: { createdAt: 'desc' },
         take: 5,
         select: { id: true, customerId: true }
@@ -316,7 +324,12 @@ const getOmsetReport = async ({ startDate, endDate }) => {
     const dateWhere = Object.keys(dateFilter).length > 0 ? { createdAt: dateFilter } : {};
 
     const orders = await prisma.jerseyOrder.findMany({
-        where: dateWhere,
+        where: {
+            ...dateWhere,
+            NOT: {
+                orderId: { startsWith: 'SEED-' }
+            }
+        },
         include: { details: true }
     });
 

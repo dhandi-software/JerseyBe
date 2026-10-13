@@ -9,7 +9,7 @@ const errorHandler = (err, req, res, next) => {
     res.status(statusCode).json({
         status: 'error',
         message,
-        ...(NODE_ENV === 'development' && { stack: err.stack })
+        ...(NODE_ENV === 'development' && statusCode >= 500 && { stack: err.stack })
     });
 };
 

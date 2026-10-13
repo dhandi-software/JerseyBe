@@ -2,7 +2,13 @@ const orderService = require('../services/orderService');
 
 const createOrder = async (req, res) => {
     try {
-        const order = await orderService.createOrder(req.body);
+        const orderData = { ...req.body };
+        // Never trust client customerId if caller is a customer; use verified database ID
+        if (req.user?.role?.toLowerCase() === 'customer' || !orderData.customerId) {
+            orderData.customerId = req.user.id;
+        }
+
+        const order = await orderService.createOrder(orderData);
         res.status(201).json(order);
     } catch (error) {
         console.error('Failed to create order:', error);
@@ -37,7 +43,14 @@ const updateOrderStatus = async (req, res) => {
 const getOrdersByCustomer = async (req, res) => {
     try {
         const { customerId } = req.params;
-        const formatted = await orderService.getOrdersByCustomer(customerId);
+        const targetId = parseInt(customerId, 10);
+        const isCustomer = req.user?.role?.toLowerCase() === 'customer';
+
+        if (isCustomer && req.user.id !== targetId) {
+            return res.status(403).json({ error: 'Forbidden: Tidak dapat melihat pesanan pengguna lain' });
+        }
+
+        const formatted = await orderService.getOrdersByCustomer(targetId);
         res.json(formatted);
     } catch (error) {
         console.error('Failed to fetch customer orders:', error);

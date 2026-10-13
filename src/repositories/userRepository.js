@@ -8,8 +8,11 @@ const findUserById = async (id, include = { customer: true, staff: true }) => {
 };
 
 const findUserByEmail = async (email) => {
+    if (typeof email !== 'string' || !email.trim()) {
+        return null;
+    }
     return await prisma.user.findUnique({
-        where: { email },
+        where: { email: email.trim().toLowerCase() },
         include: {
             customer: true,
             staff: true
@@ -18,11 +21,15 @@ const findUserByEmail = async (email) => {
 };
 
 const findUserByIdentifier = async (identifier) => {
+    if (typeof identifier !== 'string' || !identifier.trim()) {
+        return null;
+    }
+    const clean = identifier.trim();
     return await prisma.user.findFirst({
         where: {
             OR: [
-                { username: identifier },
-                { email: identifier }
+                { username: { equals: clean } },
+                { email: { equals: clean } }
             ]
         },
         include: {

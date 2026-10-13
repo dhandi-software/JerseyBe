@@ -21,8 +21,8 @@ const login = async (req, res) => {
             user: result.user
         });
     } catch (error) {
-        if (error.statusCode === 401) {
-            return res.status(401).json({ message: error.message });
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ message: error.message });
         }
         console.error('Login error:', error);
         return res.status(500).json({ message: 'Internal server error' });
@@ -52,19 +52,7 @@ const register = async (req, res) => {
 const changePassword = async (req, res) => {
     try {
         const { oldPassword, newPassword } = req.body;
-
-        let token = req.cookies?.token;
-        if (!token && req.headers.authorization?.startsWith('Bearer ')) {
-            token = req.headers.authorization.split(' ')[1];
-        }
-
-        if (!token) {
-            return res.status(401).json({ message: 'Unauthorized' });
-        }
-
-        const decoded = jwt.verify(token, JWT_SECRET);
-        const result = await authService.changePassword(decoded.id, oldPassword, newPassword);
-
+        const result = await authService.changePassword(req.user.id, oldPassword, newPassword);
         res.status(200).json(result);
     } catch (error) {
         if (error.statusCode) {

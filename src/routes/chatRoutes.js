@@ -3,6 +3,9 @@ const router = express.Router();
 const chatController = require('../controllers/chatController');
 const upload = require('../middleware/upload');
 
+const { authenticateToken } = require('../middleware/authMiddleware');
+
+router.use(authenticateToken);
 router.use('/groups', require('./chatGroupRoutes'));
 
 router.post('/upload', upload.single('file'), chatController.uploadAttachment);
