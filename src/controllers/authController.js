@@ -8,10 +8,11 @@ const login = async (req, res) => {
     try {
         const result = await authService.login(username, password);
 
+        const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
         res.cookie('token', result.token, {
             httpOnly: true,
-            secure: NODE_ENV === 'production',
-            sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
+            secure: isSecure,
+            sameSite: isSecure ? 'none' : 'lax',
             maxAge: 30 * 24 * 60 * 60 * 1000
         });
 
@@ -30,7 +31,12 @@ const login = async (req, res) => {
 };
 
 const logout = (req, res) => {
-    res.clearCookie('token');
+    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    res.clearCookie('token', {
+        httpOnly: true,
+        secure: isSecure,
+        sameSite: isSecure ? 'none' : 'lax'
+    });
     return res.status(200).json({ message: 'Logged out successfully' });
 };
 

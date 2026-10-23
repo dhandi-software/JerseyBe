@@ -18,7 +18,11 @@ const createOrder = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
     try {
-        const formattedOrders = await orderService.getAllOrders();
+        const { search, q, status } = req.query;
+        const formattedOrders = await orderService.getAllOrders({
+            search: search || q,
+            status
+        });
         res.json(formattedOrders);
     } catch (error) {
         console.error('Failed to fetch orders:', error);

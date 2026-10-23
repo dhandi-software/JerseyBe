@@ -46,8 +46,53 @@ const createOrder = async ({
     })));
 };
 
-const getAllOrders = async () => {
-    const orders = await orderRepository.findOrders({}, {
+const getAllOrders = async ({ search, status } = {}) => {
+    const where = {};
+
+    if (status && status !== 'ALL' && status !== 'SEMUA') {
+        if (status === 'MENUNGGU') {
+            where.status = { in: ['MENUNGGU', 'MENUNGGU VERIFIKASI'] };
+        } else {
+            where.status = status;
+        }
+    }
+
+    if (search && search.trim()) {
+        const queryText = search.trim();
+
+        // Match user account names or usernames for registered customer orders
+        const matchedUsers = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { username: { contains: queryText, mode: 'insensitive' } },
+                    { customer: { nama: { contains: queryText, mode: 'insensitive' } } }
+                ]
+            },
+            select: { id: true }
+        });
+        const matchingUserIds = matchedUsers.map(u => u.id);
+
+        where.OR = [
+            { orderId: { contains: queryText, mode: 'insensitive' } },
+            { queueNumber: { contains: queryText, mode: 'insensitive' } },
+            { customerName: { contains: queryText, mode: 'insensitive' } },
+            ...(matchingUserIds.length > 0 ? [{ customerId: { in: matchingUserIds } }] : []),
+            {
+                details: {
+                    some: {
+                        OR: [
+                            { playerName: { contains: queryText, mode: 'insensitive' } },
+                            { playerNumber: { contains: queryText, mode: 'insensitive' } },
+                            { playerSize: { contains: queryText, mode: 'insensitive' } },
+                            { productTitle: { contains: queryText, mode: 'insensitive' } }
+                        ]
+                    }
+                }
+            }
+        ];
+    }
+
+    const orders = await orderRepository.findOrders(where, {
         details: true,
         designer: { select: { staff: { select: { nama: true } }, username: true } }
     }, {

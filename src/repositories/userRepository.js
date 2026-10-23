@@ -28,8 +28,8 @@ const findUserByIdentifier = async (identifier) => {
     return await prisma.user.findFirst({
         where: {
             OR: [
-                { username: { equals: clean } },
-                { email: { equals: clean } }
+                { username: { equals: clean, mode: 'insensitive' } },
+                { email: { equals: clean, mode: 'insensitive' } }
             ]
         },
         include: {
