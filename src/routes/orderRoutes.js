@@ -18,6 +18,11 @@ router.patch('/:id/status', orderController.updateOrderStatus);
 router.get('/customer/:customerId', orderController.getOrdersByCustomer);
 router.get('/designer/:designerId', orderController.getOrdersByDesigner);
 router.put('/:id', orderController.updateOrder);
+router.patch('/:id/notes-video', orderController.updateVideoNotes);
+router.post('/:id/detail', orderController.addOrderDetail);
+router.patch('/detail/:detailId/status', orderController.updateDetailStatus);
+router.patch('/detail/:detailId', orderController.updateOrderDetail);
+router.delete('/detail/:detailId', orderController.deleteOrderDetail);
 
 // Design & Mockup workflow
 router.post('/:id/mockup', upload.single('mockup'), orderController.uploadMockup);

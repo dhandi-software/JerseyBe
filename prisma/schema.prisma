@@ -100,6 +100,9 @@ model JerseyOrder {
   customerId          Int
   status              String              @default("MENUNGGU")
   totalAmount         Float
+  paymentType         String              @default("FULL")
+  paidAmount          Float               @default(0)
+  remainingAmount     Float               @default(0)
   designNote          String?
   designUrl           String?
   paymentUrl          String?
@@ -122,6 +125,8 @@ model JerseyOrder {
   customerPhone       String?
   finishingUrl        String?
   printUrl            String?
+  videoUrl            String?
+  adminNote           String?
   designer            User?               @relation("AssignedDesigner", fields: [designerId], references: [id])
   details             JerseyOrderDetail[]
 }
@@ -134,6 +139,8 @@ model JerseyOrderDetail {
   playerName   String?
   playerNumber String?
   playerSize   String
+  statusBaju   Boolean     @default(false)
+  statusCelana Boolean     @default(false)
   order        JerseyOrder @relation(fields: [orderId], references: [id])
 }
 

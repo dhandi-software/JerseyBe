@@ -118,12 +118,12 @@ const uploadMockup = async (req, res) => {
 const updatePayment = async (req, res) => {
     try {
         const { id } = req.params;
-        const { paymentUrl } = req.body;
-        const updated = await orderService.updatePayment(id, paymentUrl);
+        const { paymentUrl, paymentType, paidAmount, remainingAmount } = req.body;
+        const updated = await orderService.updatePayment(id, { paymentUrl, paymentType, paidAmount, remainingAmount });
         res.json(updated);
     } catch (error) {
-        console.error('Failed to update payment URL:', error);
-        res.status(500).json({ error: 'Failed to update payment URL' });
+        console.error('Failed to update payment details:', error);
+        res.status(500).json({ error: 'Failed to update payment details' });
     }
 };
 
@@ -339,6 +339,78 @@ const getDamageHistory = async (req, res) => {
     }
 };
 
+const updateDetailStatus = async (req, res) => {
+    try {
+        const { detailId } = req.params;
+        const { statusBaju, statusCelana } = req.body;
+        const updated = await orderService.updateDetailStatus(detailId, { statusBaju, statusCelana });
+        res.json(updated);
+    } catch (error) {
+        console.error('Failed to update member detail status:', error);
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to update member detail status' });
+    }
+};
+
+const updateVideoNotes = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { videoUrl, adminNote, designNote } = req.body;
+        const updated = await orderService.updateVideoNotes(id, { videoUrl, adminNote, designNote });
+        res.json(updated);
+    } catch (error) {
+        console.error('Failed to update video and notes:', error);
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to update video and notes' });
+    }
+};
+
+const updateOrderDetail = async (req, res) => {
+    try {
+        const { detailId } = req.params;
+        const updated = await orderService.updateOrderDetail(detailId, req.body);
+        res.json(updated);
+    } catch (error) {
+        console.error('Failed to update order detail:', error);
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to update order detail' });
+    }
+};
+
+const addOrderDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const newDetail = await orderService.addOrderDetail(id, req.body);
+        res.status(201).json(newDetail);
+    } catch (error) {
+        console.error('Failed to add order detail:', error);
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to add order detail' });
+    }
+};
+
+const deleteOrderDetail = async (req, res) => {
+    try {
+        const { detailId } = req.params;
+        const deleted = await orderService.deleteOrderDetail(detailId);
+        res.json({ message: 'Detail anggota berhasil dihapus', deleted });
+    } catch (error) {
+        console.error('Failed to delete order detail:', error);
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        res.status(500).json({ error: 'Failed to delete order detail' });
+    }
+};
+
 module.exports = {
     createOrder,
     getAllOrders,
@@ -364,5 +436,10 @@ module.exports = {
     selectAlternative,
     recordDamage,
     updateDamage,
-    getDamageHistory
+    getDamageHistory,
+    updateDetailStatus,
+    updateOrderDetail,
+    addOrderDetail,
+    deleteOrderDetail,
+    updateVideoNotes
 };

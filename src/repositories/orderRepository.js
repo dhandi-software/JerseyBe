@@ -79,12 +79,41 @@ const runTransaction = async (callback) => {
     return await prisma.$transaction(callback);
 };
 
+const findOrderDetailById = async (detailId) => {
+    return await prisma.jerseyOrderDetail.findUnique({
+        where: { id: parseInt(detailId) }
+    });
+};
+
+const createOrderDetail = async (data) => {
+    return await prisma.jerseyOrderDetail.create({
+        data
+    });
+};
+
+const updateOrderDetail = async (detailId, data) => {
+    return await prisma.jerseyOrderDetail.update({
+        where: { id: parseInt(detailId) },
+        data
+    });
+};
+
+const deleteOrderDetail = async (detailId) => {
+    return await prisma.jerseyOrderDetail.delete({
+        where: { id: parseInt(detailId) }
+    });
+};
+
 module.exports = {
     createOrder,
     findOrderById,
     findOrderByOrderId,
     findOrders,
     updateOrder,
+    findOrderDetailById,
+    createOrderDetail,
+    updateOrderDetail,
+    deleteOrderDetail,
     findLastOrderWithQueue,
     createDamageHistory,
     updateDamageHistory,

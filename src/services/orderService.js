@@ -15,6 +15,9 @@ const createOrder = async ({
     designNote,
     designUrl,
     paymentUrl,
+    paymentType,
+    paidAmount,
+    remainingAmount,
     shippingMethod,
     shippingAddress,
     details
@@ -26,12 +29,26 @@ const createOrder = async ({
         existing = await prisma.jerseyOrder.findUnique({ where: { orderId } });
     }
 
+    const pType = paymentType === 'DP' ? 'DP' : 'FULL';
+    const total = parseFloat(totalAmount) || 0;
+    let paid = parseFloat(paidAmount);
+    if (isNaN(paid) || paid < 0) {
+        paid = pType === 'FULL' ? total : 0;
+    }
+    let remaining = parseFloat(remainingAmount);
+    if (isNaN(remaining) || remaining < 0) {
+        remaining = Math.max(0, total - paid);
+    }
+
     return await orderRepository.createOrder({
         orderId,
         customerId,
         customerName,
         customerPhone,
-        totalAmount,
+        totalAmount: total,
+        paymentType: pType,
+        paidAmount: paid,
+        remainingAmount: remaining,
         designNote,
         designUrl,
         paymentUrl,
@@ -42,7 +59,9 @@ const createOrder = async ({
         productTitle: d.productTitle,
         playerName: d.playerName,
         playerNumber: d.playerNumber,
-        playerSize: d.playerSize
+        playerSize: d.playerSize,
+        statusBaju: d.statusBaju !== undefined ? Boolean(d.statusBaju) : false,
+        statusCelana: d.statusCelana !== undefined ? Boolean(d.statusCelana) : false
     })));
 };
 
@@ -340,7 +359,9 @@ const updateOrder = async (id, { totalAmount, designNote, designUrl, paymentUrl,
                         productTitle: d.productTitle,
                         playerName: d.playerName,
                         playerNumber: d.playerNumber,
-                        playerSize: d.playerSize
+                        playerSize: d.playerSize,
+                        statusBaju: d.statusBaju !== undefined ? Boolean(d.statusBaju) : false,
+                        statusCelana: d.statusCelana !== undefined ? Boolean(d.statusCelana) : false
                     }))
                 }
             },
@@ -365,8 +386,28 @@ const uploadMockup = async (id, file) => {
     });
 };
 
-const updatePayment = async (id, paymentUrl) => {
-    return await orderRepository.updateOrder(id, { paymentUrl });
+const updatePayment = async (id, paymentData) => {
+    let dataToUpdate = {};
+    if (typeof paymentData === 'object' && paymentData !== null) {
+        if (paymentData.paymentUrl !== undefined) dataToUpdate.paymentUrl = paymentData.paymentUrl;
+        if (paymentData.paymentType !== undefined) dataToUpdate.paymentType = paymentData.paymentType;
+        if (paymentData.paidAmount !== undefined) dataToUpdate.paidAmount = parseFloat(paymentData.paidAmount) || 0;
+        if (paymentData.remainingAmount !== undefined) {
+            dataToUpdate.remainingAmount = parseFloat(paymentData.remainingAmount) || 0;
+        } else if (paymentData.paidAmount !== undefined) {
+            const current = await orderRepository.findOrderById(id);
+            if (current) {
+                dataToUpdate.remainingAmount = Math.max(0, (current.totalAmount || 0) - dataToUpdate.paidAmount);
+            }
+        }
+    } else if (typeof paymentData === 'string') {
+        dataToUpdate.paymentUrl = paymentData;
+    }
+
+    return await orderRepository.updateOrder(id, dataToUpdate, {
+        details: true,
+        designer: { select: { staff: { select: { nama: true } }, username: true } }
+    });
 };
 
 const approveDesign = async (id) => {
@@ -697,6 +738,138 @@ const getDamageHistory = async (id) => {
     });
 };
 
+const updateDetailStatus = async (detailId, { statusBaju, statusCelana }) => {
+    const detail = await orderRepository.findOrderDetailById(detailId);
+    if (!detail) {
+        const error = new Error('Detail anggota tidak ditemukan');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const dataToUpdate = {};
+    if (statusBaju !== undefined) dataToUpdate.statusBaju = Boolean(statusBaju);
+    if (statusCelana !== undefined) dataToUpdate.statusCelana = Boolean(statusCelana);
+
+    return await orderRepository.updateOrderDetail(detailId, dataToUpdate);
+};
+
+const updateOrderDetail = async (detailId, { playerName, playerNumber, playerSize, statusBaju, statusCelana }) => {
+    const detail = await orderRepository.findOrderDetailById(detailId);
+    if (!detail) {
+        const error = new Error('Detail anggota tidak ditemukan');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const dataToUpdate = {};
+    if (playerName !== undefined) dataToUpdate.playerName = playerName ? playerName.trim() : detail.playerName;
+    if (playerNumber !== undefined) dataToUpdate.playerNumber = playerNumber ? String(playerNumber).trim() : '';
+    if (playerSize !== undefined) dataToUpdate.playerSize = playerSize ? playerSize.trim() : detail.playerSize;
+    if (statusBaju !== undefined) dataToUpdate.statusBaju = Boolean(statusBaju);
+    if (statusCelana !== undefined) dataToUpdate.statusCelana = Boolean(statusCelana);
+
+    return await orderRepository.updateOrderDetail(detailId, dataToUpdate);
+};
+
+const addOrderDetail = async (orderId, { playerName, playerNumber, playerSize, statusBaju, statusCelana }) => {
+    const orderIdInt = parseInt(orderId);
+    const order = await orderRepository.findOrderById(orderIdInt);
+    if (!order) {
+        const error = new Error('Pesanan tidak ditemukan');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const firstDetail = order.details?.[0];
+    const productId = firstDetail?.productId || 1;
+    const productTitle = firstDetail?.productTitle || 'Custom Jersey';
+
+    // Calculate unit price from existing order details or product
+    let unitPrice = 150000;
+    if (order.totalAmount > 0 && order.details && order.details.length > 0) {
+        unitPrice = Math.round(order.totalAmount / order.details.length);
+    } else if (productId) {
+        const bahan = await bahanBajuRepository.findBahanBajuById(productId);
+        if (bahan?.harga) unitPrice = bahan.harga;
+    }
+
+    const newDetail = await orderRepository.createOrderDetail({
+        orderId: orderIdInt,
+        productId,
+        productTitle,
+        playerName: (playerName || 'Pemain Baru').trim(),
+        playerNumber: playerNumber ? String(playerNumber).trim() : '',
+        playerSize: (playerSize || 'M (Lengan Pendek)').trim(),
+        statusBaju: Boolean(statusBaju),
+        statusCelana: Boolean(statusCelana)
+    });
+
+    const newTotalAmount = (order.totalAmount || 0) + unitPrice;
+    const updateData = { totalAmount: newTotalAmount };
+    if (order.paymentType === 'DP') {
+        updateData.remainingAmount = Math.max(0, newTotalAmount - (order.paidAmount || 0));
+    }
+    await orderRepository.updateOrder(orderIdInt, updateData);
+
+    return {
+        ...newDetail,
+        unitPrice,
+        newTotalAmount,
+        remainingAmount: updateData.remainingAmount
+    };
+};
+
+const deleteOrderDetail = async (detailId) => {
+    const detail = await orderRepository.findOrderDetailById(detailId);
+    if (!detail) {
+        const error = new Error('Detail anggota tidak ditemukan');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const order = await orderRepository.findOrderById(detail.orderId);
+    let newTotalAmount = 0;
+    let newRemainingAmount = undefined;
+    if (order) {
+        const totalCount = order.details ? order.details.length : 1;
+        const unitPrice = totalCount > 0 ? Math.round(order.totalAmount / totalCount) : 0;
+        newTotalAmount = Math.max(0, (order.totalAmount || 0) - unitPrice);
+        const updateData = { totalAmount: newTotalAmount };
+        if (order.paymentType === 'DP') {
+            updateData.remainingAmount = Math.max(0, newTotalAmount - (order.paidAmount || 0));
+            newRemainingAmount = updateData.remainingAmount;
+        }
+        await orderRepository.updateOrder(order.id, updateData);
+    }
+
+    const deleted = await orderRepository.deleteOrderDetail(detailId);
+    return {
+        ...deleted,
+        newTotalAmount,
+        remainingAmount: newRemainingAmount
+    };
+};
+
+const updateVideoNotes = async (id, { videoUrl, adminNote, designNote }) => {
+    const orderIdInt = parseInt(id);
+    const order = await orderRepository.findOrderById(orderIdInt);
+    if (!order) {
+        const error = new Error('Pesanan tidak ditemukan');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    const dataToUpdate = {};
+    if (videoUrl !== undefined) dataToUpdate.videoUrl = videoUrl ? videoUrl.trim() : null;
+    if (adminNote !== undefined) dataToUpdate.adminNote = adminNote ? adminNote.trim() : null;
+    if (designNote !== undefined) dataToUpdate.designNote = designNote ? designNote.trim() : null;
+
+    return await orderRepository.updateOrder(orderIdInt, dataToUpdate, {
+        details: true,
+        designer: { select: { staff: { select: { nama: true } }, username: true } }
+    });
+};
+
 module.exports = {
     createOrder,
     getAllOrders,
@@ -722,5 +895,10 @@ module.exports = {
     selectAlternative,
     recordDamage,
     updateDamage,
-    getDamageHistory
+    getDamageHistory,
+    updateDetailStatus,
+    updateOrderDetail,
+    addOrderDetail,
+    deleteOrderDetail,
+    updateVideoNotes
 };
