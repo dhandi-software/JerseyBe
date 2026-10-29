@@ -319,7 +319,7 @@ const trackOrder = async (orderId) => {
 
     return {
         ...order,
-        customerName: user ? (user.customer?.nama || user.username) : 'Guest User',
+        customerName: order.customerName || (user ? (user.customer?.nama || user.username) : 'Guest User'),
         designerName: order.designer ? (order.designer.staff?.nama || order.designer.username) : 'Belum Ada'
     };
 };
