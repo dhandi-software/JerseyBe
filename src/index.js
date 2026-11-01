@@ -22,13 +22,15 @@ app.use((req, res, next) => {
 
 const isOriginAllowed = (origin) => {
     if (!origin) return true;
-    if (ALLOWED_ORIGINS.includes(origin)) return true;
+    const normalizedOrigin = origin.trim().replace(/\/$/, '');
+    if (ALLOWED_ORIGINS.includes(normalizedOrigin)) return true;
     try {
-        const { hostname } = new URL(origin);
+        const { hostname } = new URL(normalizedOrigin);
         if (
             hostname === 'localhost' ||
             hostname === '127.0.0.1' ||
-            hostname.endsWith('.trycloudflare.com')
+            hostname.endsWith('.trycloudflare.com') ||
+            hostname.endsWith('.up.railway.app')
         ) {
             return true;
         }
