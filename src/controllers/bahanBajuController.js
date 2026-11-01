@@ -1,9 +1,18 @@
 const bahanBajuService = require('../services/bahanBajuService');
 
+const INTERNAL_STAFF_ROLES = ['admin', 'manager', 'gudang', 'desain'];
+
 const getAllBahan = async (req, res) => {
     try {
         const bahan = await bahanBajuService.getAllBahan();
-        res.json({ status: 'success', data: bahan });
+        const role = (req.user?.role || '').toLowerCase();
+        const isStaff = INTERNAL_STAFF_ROLES.includes(role);
+
+        const safeBahan = isStaff
+            ? bahan
+            : bahan.map(({ hargaBeli, buktiNotaUrl, ...publicFields }) => publicFields);
+
+        res.json({ status: 'success', data: safeBahan });
     } catch (error) {
         console.error(error);
         res.status(500).json({ status: 'error', message: 'Internal server error' });

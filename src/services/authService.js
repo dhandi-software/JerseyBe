@@ -34,7 +34,7 @@ const login = async (username, password) => {
     const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         JWT_SECRET,
-        { expiresIn: '30d' }
+        { expiresIn: '7d' }
     );
 
     const profileName = user.customer?.nama || user.staff?.nama || user.username;

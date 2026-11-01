@@ -24,8 +24,16 @@ const getChatHistory = async (userId, otherUserId) => {
             isPublic: true,
             NOT: { deletedBy: { some: { id: uid } } }
         };
-    } else if (otherUserId.startsWith('group_')) {
-        const roomId = parseInt(otherUserId.split('_')[1]);
+    } else if (String(otherUserId).startsWith('group_')) {
+        const roomId = parseInt(String(otherUserId).split('_')[1], 10);
+        const isMember = await prisma.chatRoomMember.findFirst({
+            where: { roomId, userId: uid }
+        });
+        if (!isMember) {
+            const error = new Error('Forbidden: Anda bukan anggota grup ini');
+            error.statusCode = 403;
+            throw error;
+        }
         whereClause = {
             roomId,
             NOT: { deletedBy: { some: { id: uid } } }

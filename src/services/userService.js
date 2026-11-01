@@ -167,11 +167,17 @@ const getUserById = async (id) => {
     };
 };
 
-const updateUser = async (id, { email, password, role, ...profileData }) => {
+const updateUser = async (id, { email, password, role, ...profileData }, callerRole = null) => {
     const user = await userRepository.findUserById(id);
     if (!user) {
         const error = new Error('User not found');
         error.statusCode = 404;
+        throw error;
+    }
+
+    if (callerRole === 'admin' && user.role?.toLowerCase() === 'manager') {
+        const error = new Error('Forbidden: Administrator tidak diizinkan mengubah akun Manager');
+        error.statusCode = 403;
         throw error;
     }
 
@@ -312,17 +318,34 @@ const deleteUsersBatch = async (ids) => {
 
 const getDesigners = async () => {
     const designers = await prisma.user.findMany({
-        where: { role: 'desain' },
+        where: {
+            OR: [
+                { role: { equals: 'desain', mode: 'insensitive' } },
+                { role: { equals: 'designer', mode: 'insensitive' } },
+                {
+                    staff: {
+                        position: { contains: 'desain', mode: 'insensitive' }
+                    }
+                },
+                {
+                    staff: {
+                        position: { contains: 'designer', mode: 'insensitive' }
+                    }
+                }
+            ]
+        },
         select: {
             id: true,
             username: true,
             email: true,
-            staff: { select: { nama: true } }
-        }
+            staff: { select: { nama: true, position: true } }
+        },
+        orderBy: { id: 'asc' }
     });
 
     return designers.map(d => ({
         id: d.id,
+        username: d.username,
         email: d.email,
         nama: d.staff?.nama || d.username
     }));
@@ -337,7 +360,17 @@ const getAllChatCustomers = async () => {
                 { receivedMessages: { some: {} } }
             ]
         },
-        include: { customer: true },
+        select: {
+            id: true,
+            username: true,
+            email: true,
+            role: true,
+            photo: true,
+            bio: true,
+            createdAt: true,
+            updatedAt: true,
+            customer: true
+        },
         orderBy: { id: 'desc' }
     });
 };

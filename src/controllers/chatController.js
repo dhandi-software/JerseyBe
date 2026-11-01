@@ -1,5 +1,7 @@
 const chatService = require('../services/chatService');
 
+const INTERNAL_STAFF_ROLES = ['admin', 'manager', 'desain', 'gudang'];
+
 const uploadAttachment = (req, res) => {
     try {
         const result = chatService.uploadAttachment(req.file);
@@ -17,14 +19,22 @@ const getChatHistory = async (req, res) => {
         const { userId, otherUserId } = req.params;
         const uId = parseInt(userId, 10);
         const oId = parseInt(otherUserId, 10);
+        const role = (req.user?.role || '').toLowerCase();
 
-        if (req.user.id !== uId && req.user.id !== oId && req.user.role?.toLowerCase() !== 'admin') {
+        if (req.user.id !== uId && req.user.id !== oId && role !== 'admin') {
             return res.status(403).json({ message: 'Forbidden: Anda bukan partisipan dalam percakapan ini' });
         }
 
-        const formattedMessages = await chatService.getChatHistory(uId, oId);
+        if (otherUserId === 'public' && !INTERNAL_STAFF_ROLES.includes(role)) {
+            return res.status(403).json({ message: 'Forbidden: Ruang internal hanya untuk tim internal' });
+        }
+
+        const formattedMessages = await chatService.getChatHistory(uId, otherUserId);
         res.json(formattedMessages);
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ message: error.message });
+        }
         console.error('Error fetching chat history:', error);
         res.status(500).json({ message: 'Internal server error' });
     }

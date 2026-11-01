@@ -87,7 +87,8 @@ const createCustomerWithTransaction = async ({ username, email, password, nama }
             }
         });
 
-        return { user, customer };
+        const { password: _, ...safeUser } = user;
+        return { user: safeUser, customer };
     });
 };
 
@@ -109,7 +110,8 @@ const createStaffWithTransaction = async ({ username, email, password, role, nam
             }
         });
 
-        return { user, staff };
+        const { password: _, ...safeUser } = user;
+        return { user: safeUser, staff };
     });
 };
 

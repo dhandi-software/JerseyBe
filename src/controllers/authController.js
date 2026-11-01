@@ -13,7 +13,7 @@ const login = async (req, res) => {
             httpOnly: true,
             secure: isSecure,
             sameSite: isSecure ? 'none' : 'lax',
-            maxAge: 30 * 24 * 60 * 60 * 1000
+            maxAge: 7 * 24 * 60 * 60 * 1000
         });
 
         return res.status(200).json({

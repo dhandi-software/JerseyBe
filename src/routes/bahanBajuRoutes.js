@@ -10,15 +10,15 @@ const {
     getReturBahan
 } = require('../controllers/bahanBajuController');
 
-const { authenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
+const { authenticateToken, optionalAuthenticateToken, authorizeRoles } = require('../middleware/authMiddleware');
 
-// Public catalog listing for customer and visitor browsing
-router.get('/', getAllBahan);
+// Public catalog listing for customer and visitor browsing (optional auth to detect internal staff)
+router.get('/', optionalAuthenticateToken, getAllBahan);
 
 // Internal staff routes
 router.use(authenticateToken);
-router.get('/history', authorizeRoles('admin', 'gudang', 'manager'), getHistory);
-router.get('/retur', authorizeRoles('admin', 'gudang', 'manager'), getReturBahan);
+router.get('/history', authorizeRoles('admin', 'gudang', 'manager', 'desain'), getHistory);
+router.get('/retur', authorizeRoles('admin', 'gudang', 'manager', 'desain'), getReturBahan);
 
 router.post('/', authorizeRoles('admin', 'gudang'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), createBahan);
 router.put('/:id', authorizeRoles('admin', 'gudang'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), updateBahan);

@@ -1,9 +1,19 @@
 const orderService = require('../services/orderService');
 
+const handleControllerError = (res, logMessage, error, fallbackMessage) => {
+    console.error(logMessage, error);
+    if (error && error.statusCode) {
+        return res.status(error.statusCode).json({ error: error.message });
+    }
+    return res.status(500).json({ error: fallbackMessage });
+};
+
 const createOrder = async (req, res) => {
     try {
-        const orderData = { ...req.body };
-        // Never trust client customerId if caller is a customer; use verified database ID
+        const orderData = {
+            ...req.body,
+            callerRole: req.user?.role
+        };
         if (req.user?.role?.toLowerCase() === 'customer' || !orderData.customerId) {
             orderData.customerId = req.user.id;
         }
@@ -11,8 +21,7 @@ const createOrder = async (req, res) => {
         const order = await orderService.createOrder(orderData);
         res.status(201).json(order);
     } catch (error) {
-        console.error('Failed to create order:', error);
-        res.status(500).json({ error: 'Failed to create order' });
+        handleControllerError(res, 'Failed to create order:', error, 'Failed to create order');
     }
 };
 
@@ -25,8 +34,7 @@ const getAllOrders = async (req, res) => {
         });
         res.json(formattedOrders);
     } catch (error) {
-        console.error('Failed to fetch orders:', error);
-        res.status(500).json({ error: 'Failed to fetch orders' });
+        handleControllerError(res, 'Failed to fetch orders:', error, 'Failed to fetch orders');
     }
 };
 
@@ -36,11 +44,7 @@ const updateOrderStatus = async (req, res) => {
         const result = await orderService.updateOrderStatus(id, req.body);
         res.json(result);
     } catch (error) {
-        console.error('Failed to update order status:', error);
-        if (error.statusCode === 404) {
-            return res.status(404).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to update order status' });
+        handleControllerError(res, 'Failed to update order status:', error, 'Failed to update order status');
     }
 };
 
@@ -57,8 +61,7 @@ const getOrdersByCustomer = async (req, res) => {
         const formatted = await orderService.getOrdersByCustomer(targetId);
         res.json(formatted);
     } catch (error) {
-        console.error('Failed to fetch customer orders:', error);
-        res.status(500).json({ error: 'Failed to fetch customer orders' });
+        handleControllerError(res, 'Failed to fetch customer orders:', error, 'Failed to fetch customer orders');
     }
 };
 
@@ -68,36 +71,27 @@ const getOrdersByDesigner = async (req, res) => {
         const formatted = await orderService.getOrdersByDesigner(designerId);
         res.json(formatted);
     } catch (error) {
-        console.error('Failed to fetch designer orders:', error);
-        res.status(500).json({ error: 'Failed to fetch designer orders' });
+        handleControllerError(res, 'Failed to fetch designer orders:', error, 'Failed to fetch designer orders');
     }
 };
 
 const trackOrder = async (req, res) => {
     try {
         const { orderId } = req.params;
-        const formattedOrder = await orderService.trackOrder(orderId);
+        const formattedOrder = await orderService.trackOrder(orderId, req.user);
         res.json(formattedOrder);
     } catch (error) {
-        console.error('Failed to track order:', error);
-        if (error.statusCode === 404) {
-            return res.status(404).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to track order' });
+        handleControllerError(res, 'Failed to track order:', error, 'Failed to track order');
     }
 };
 
 const updateOrder = async (req, res) => {
     try {
         const { id } = req.params;
-        const updatedOrder = await orderService.updateOrder(id, req.body);
+        const updatedOrder = await orderService.updateOrder(id, req.body, req.user);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to edit order:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to edit order' });
+        handleControllerError(res, 'Failed to edit order:', error, 'Failed to edit order');
     }
 };
 
@@ -107,11 +101,7 @@ const uploadMockup = async (req, res) => {
         const updatedOrder = await orderService.uploadMockup(id, req.file);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to upload mockup:', error);
-        if (error.statusCode === 400) {
-            return res.status(400).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to upload mockup' });
+        handleControllerError(res, 'Failed to upload mockup:', error, 'Failed to upload mockup');
     }
 };
 
@@ -119,36 +109,36 @@ const updatePayment = async (req, res) => {
     try {
         const { id } = req.params;
         const { paymentUrl, paymentType, paidAmount, remainingAmount } = req.body;
-        const updated = await orderService.updatePayment(id, { paymentUrl, paymentType, paidAmount, remainingAmount });
+        const updated = await orderService.updatePayment(
+            id,
+            { paymentUrl, paymentType, paidAmount, remainingAmount },
+            req.user
+        );
         res.json(updated);
     } catch (error) {
-        console.error('Failed to update payment details:', error);
-        res.status(500).json({ error: 'Failed to update payment details' });
+        handleControllerError(res, 'Failed to update payment details:', error, 'Failed to update payment details');
     }
 };
 
 const approveDesign = async (req, res) => {
     try {
         const { id } = req.params;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.approveDesign(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to approve design:', error);
-        res.status(500).json({ error: 'Failed to approve design' });
+        handleControllerError(res, 'Failed to approve design:', error, 'Failed to approve design');
     }
 };
 
 const unapproveDesign = async (req, res) => {
     try {
         const { id } = req.params;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.unapproveDesign(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to unapprove design:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to unapprove design' });
+        handleControllerError(res, 'Failed to unapprove design:', error, 'Failed to unapprove design');
     }
 };
 
@@ -156,14 +146,11 @@ const revisiDesign = async (req, res) => {
     try {
         const { id } = req.params;
         const { feedback } = req.body;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.revisiDesign(id, feedback);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to submit design revision:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to submit design revision' });
+        handleControllerError(res, 'Failed to submit design revision:', error, 'Failed to submit design revision');
     }
 };
 
@@ -173,8 +160,7 @@ const cancelMockup = async (req, res) => {
         const updated = await orderService.cancelMockup(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to cancel mockup:', error);
-        res.status(500).json({ error: 'Failed to cancel mockup' });
+        handleControllerError(res, 'Failed to cancel mockup:', error, 'Failed to cancel mockup');
     }
 };
 
@@ -184,36 +170,29 @@ const uploadLayout = async (req, res) => {
         const updatedOrder = await orderService.uploadLayout(id, req.file);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to upload layout:', error);
-        if (error.statusCode === 400) {
-            return res.status(400).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to upload layout' });
+        handleControllerError(res, 'Failed to upload layout:', error, 'Failed to upload layout');
     }
 };
 
 const approveLayout = async (req, res) => {
     try {
         const { id } = req.params;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.approveLayout(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to approve layout:', error);
-        res.status(500).json({ error: 'Failed to approve layout' });
+        handleControllerError(res, 'Failed to approve layout:', error, 'Failed to approve layout');
     }
 };
 
 const unapproveLayout = async (req, res) => {
     try {
         const { id } = req.params;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.unapproveLayout(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to unapprove layout:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to unapprove layout' });
+        handleControllerError(res, 'Failed to unapprove layout:', error, 'Failed to unapprove layout');
     }
 };
 
@@ -221,14 +200,11 @@ const revisiLayout = async (req, res) => {
     try {
         const { id } = req.params;
         const { feedback } = req.body;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updated = await orderService.revisiLayout(id, feedback);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to submit layout revision:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to submit layout revision' });
+        handleControllerError(res, 'Failed to submit layout revision:', error, 'Failed to submit layout revision');
     }
 };
 
@@ -238,8 +214,7 @@ const cancelLayout = async (req, res) => {
         const updated = await orderService.cancelLayout(id);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to cancel layout:', error);
-        res.status(500).json({ error: 'Failed to cancel layout' });
+        handleControllerError(res, 'Failed to cancel layout:', error, 'Failed to cancel layout');
     }
 };
 
@@ -249,11 +224,7 @@ const uploadPrint = async (req, res) => {
         const updatedOrder = await orderService.uploadPrint(id, req.file);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to upload print photo:', error);
-        if (error.statusCode === 400) {
-            return res.status(400).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to upload print photo' });
+        handleControllerError(res, 'Failed to upload print photo:', error, 'Failed to upload print photo');
     }
 };
 
@@ -263,11 +234,7 @@ const uploadFinishing = async (req, res) => {
         const updatedOrder = await orderService.uploadFinishing(id, req.file);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to upload finishing photo:', error);
-        if (error.statusCode === 400) {
-            return res.status(400).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to upload finishing photo' });
+        handleControllerError(res, 'Failed to upload finishing photo:', error, 'Failed to upload finishing photo');
     }
 };
 
@@ -278,8 +245,7 @@ const recommendAlternatives = async (req, res) => {
         const updated = await orderService.recommendAlternatives(id, recommendedBahanIds);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to recommend alternatives:', error);
-        res.status(500).json({ error: 'Failed to recommend alternatives' });
+        handleControllerError(res, 'Failed to recommend alternatives:', error, 'Failed to recommend alternatives');
     }
 };
 
@@ -287,14 +253,11 @@ const selectAlternative = async (req, res) => {
     try {
         const { id } = req.params;
         const { selectedBahanId } = req.body;
+        await orderService.assertOrderOwnerOrStaff(id, req.user);
         const updatedOrder = await orderService.selectAlternative(id, selectedBahanId);
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to select alternative material:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to select alternative material' });
+        handleControllerError(res, 'Failed to select alternative material:', error, 'Failed to select alternative material');
     }
 };
 
@@ -305,11 +268,7 @@ const recordDamage = async (req, res) => {
         const updatedOrder = await orderService.recordDamage(id, { productId, pcs, keterangan, actor });
         res.json(updatedOrder);
     } catch (error) {
-        console.error('Failed to report damage:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to report damage' });
+        handleControllerError(res, 'Failed to report damage:', error, 'Failed to report damage');
     }
 };
 
@@ -320,11 +279,7 @@ const updateDamage = async (req, res) => {
         const updatedHistory = await orderService.updateDamage(historyId, { pcs, keterangan, actor });
         res.json(updatedHistory);
     } catch (error) {
-        console.error('Failed to update damage report:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to update damage report' });
+        handleControllerError(res, 'Failed to update damage report:', error, 'Failed to update damage report');
     }
 };
 
@@ -334,8 +289,7 @@ const getDamageHistory = async (req, res) => {
         const histories = await orderService.getDamageHistory(id);
         res.json(histories);
     } catch (error) {
-        console.error('Failed to fetch damage history:', error);
-        res.status(500).json({ error: 'Failed to fetch damage history' });
+        handleControllerError(res, 'Failed to fetch damage history:', error, 'Failed to fetch damage history');
     }
 };
 
@@ -346,11 +300,7 @@ const updateDetailStatus = async (req, res) => {
         const updated = await orderService.updateDetailStatus(detailId, { statusBaju, statusCelana });
         res.json(updated);
     } catch (error) {
-        console.error('Failed to update member detail status:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to update member detail status' });
+        handleControllerError(res, 'Failed to update member detail status:', error, 'Failed to update member detail status');
     }
 };
 
@@ -361,11 +311,7 @@ const updateVideoNotes = async (req, res) => {
         const updated = await orderService.updateVideoNotes(id, { videoUrl, adminNote, designNote });
         res.json(updated);
     } catch (error) {
-        console.error('Failed to update video and notes:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to update video and notes' });
+        handleControllerError(res, 'Failed to update video and notes:', error, 'Failed to update video and notes');
     }
 };
 
@@ -375,11 +321,7 @@ const updateOrderDetail = async (req, res) => {
         const updated = await orderService.updateOrderDetail(detailId, req.body);
         res.json(updated);
     } catch (error) {
-        console.error('Failed to update order detail:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to update order detail' });
+        handleControllerError(res, 'Failed to update order detail:', error, 'Failed to update order detail');
     }
 };
 
@@ -389,11 +331,7 @@ const addOrderDetail = async (req, res) => {
         const newDetail = await orderService.addOrderDetail(id, req.body);
         res.status(201).json(newDetail);
     } catch (error) {
-        console.error('Failed to add order detail:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to add order detail' });
+        handleControllerError(res, 'Failed to add order detail:', error, 'Failed to add order detail');
     }
 };
 
@@ -403,11 +341,7 @@ const deleteOrderDetail = async (req, res) => {
         const deleted = await orderService.deleteOrderDetail(detailId);
         res.json({ message: 'Detail anggota berhasil dihapus', deleted });
     } catch (error) {
-        console.error('Failed to delete order detail:', error);
-        if (error.statusCode) {
-            return res.status(error.statusCode).json({ error: error.message });
-        }
-        res.status(500).json({ error: 'Failed to delete order detail' });
+        handleControllerError(res, 'Failed to delete order detail:', error, 'Failed to delete order detail');
     }
 };
 

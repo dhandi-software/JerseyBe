@@ -69,6 +69,14 @@ const getUsersByRole = async (req, res) => {
 const getUserById = async (req, res) => {
     try {
         const { id } = req.params;
+        const targetId = parseInt(id, 10);
+        const callerRole = (req.user?.role || '').toLowerCase();
+        const isStaff = ['admin', 'manager', 'desain', 'gudang'].includes(callerRole);
+
+        if (!isStaff && req.user?.id !== targetId) {
+            return res.status(403).json({ message: 'Forbidden: Tidak dapat melihat data pengguna lain' });
+        }
+
         const userData = await userService.getUserById(id);
         res.json({ data: userData });
     } catch (error) {
@@ -83,11 +91,12 @@ const getUserById = async (req, res) => {
 const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
-        const result = await userService.updateUser(id, req.body);
+        const callerRole = req.user?.role?.toLowerCase();
+        const result = await userService.updateUser(id, req.body, callerRole);
         res.json(result);
     } catch (error) {
-        if (error.statusCode === 404) {
-            return res.status(404).json({ message: error.message });
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ message: error.message });
         }
         console.error('Error updating user:', error);
         res.status(500).json({ message: 'Internal Server Error' });

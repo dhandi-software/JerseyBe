@@ -148,130 +148,25 @@ async function main() {
   }
 
   // ============================================================
-  // 6. Seed BahanBaju (Kain Jersey)
-  //    Mencakup semua kolom: nama, deskripsi, imageUrl, harga,
-  //    kuantitasKg, rasioKonversi, status, buktiNotaUrl, hargaBeli
+  // 6. BahanBaju (Kain Jersey)
+  //    Data bahan baju hanya berasal dari input Admin / Gudang.
+  //    Dummy seed bahan baju dihapus agar katalog menampilkan
+  //    empty state ketika admin belum menambahkan produk.
   // ============================================================
-  const bahanDriFit = await prisma.bahanBaju.upsert({
-    where: { id: 1 },
-    update: {},
-    create: {
-      nama: 'Dri-Fit Premium',
-      deskripsi: 'Bahan jersey dri-fit berkualitas tinggi, ringan dan cepat menyerap keringat. Cocok untuk futsal dan sepak bola.',
-      kuantitasKg: 50.0,
-      rasioKonversi: 1.2,
-      status: 'Tersedia',
-      harga: 85000,
-      hargaBeli: 60000,
-      buktiNotaUrl: null,
+  await prisma.bahanBaju.deleteMany({
+    where: {
       imageUrl: null,
-    }
-  });
-
-  const bahanHyperMesh = await prisma.bahanBaju.upsert({
-    where: { id: 2 },
-    update: {},
-    create: {
-      nama: 'Hyper Mesh',
-      deskripsi: 'Bahan mesh berlubang mikro yang sangat breathable. Ideal untuk jersey lari dan basket.',
-      kuantitasKg: 30.0,
-      rasioKonversi: 1.0,
-      status: 'Tersedia',
-      harga: 95000,
-      hargaBeli: 70000,
-      buktiNotaUrl: null,
-      imageUrl: null,
-    }
-  });
-
-  const bahanPolyesterCool = await prisma.bahanBaju.upsert({
-    where: { id: 3 },
-    update: {},
-    create: {
-      nama: 'Polyester Cool-Tech',
-      deskripsi: 'Bahan polyester teknologi cool-tech, menjaga suhu tubuh tetap sejuk saat bermain.',
-      kuantitasKg: 20.0,
-      rasioKonversi: 1.1,
-      status: 'Menipis',
-      harga: 75000,
-      hargaBeli: 55000,
-      buktiNotaUrl: null,
-      imageUrl: null,
-    }
-  });
-
-  // ============================================================
-  // 7. Seed BahanBajuHistory
-  //    Mencakup semua kolom baru: customerName, orderId, pcs
-  //    serta kolom lama: aksi, jumlah, stokAkhir, keterangan,
-  //    actor, hargaBeli, hargaJual, totalNilai, namaBahan
-  // ============================================================
-  await prisma.bahanBajuHistory.createMany({
-    skipDuplicates: true,
-    data: [
-      // Penambahan stok awal Dri-Fit
-      {
-        bahanId: bahanDriFit.id,
-        namaBahan: bahanDriFit.nama,
-        aksi: 'TAMBAH_STOK',
-        jumlah: 50.0,
-        stokAkhir: 50.0,
-        keterangan: 'Pengadaan stok awal bahan Dri-Fit Premium',
-        actor: 'Admin',
-        hargaBeli: 60000,
-        hargaJual: null,
-        totalNilai: 3000000,
-        customerName: null,
-        orderId: null,
-        pcs: null,
+      nama: {
+        in: ['Dri-Fit Premium', 'Hyper Mesh', 'Polyester Cool-Tech'],
       },
-      // Penambahan stok awal Hyper Mesh
-      {
-        bahanId: bahanHyperMesh.id,
-        namaBahan: bahanHyperMesh.nama,
-        aksi: 'TAMBAH_STOK',
-        jumlah: 30.0,
-        stokAkhir: 30.0,
-        keterangan: 'Pengadaan stok awal bahan Hyper Mesh',
-        actor: 'Admin',
-        hargaBeli: 70000,
-        hargaJual: null,
-        totalNilai: 2100000,
-        customerName: null,
-        orderId: null,
-        pcs: null,
-      },
-      // Penggunaan bahan Dri-Fit untuk pesanan (contoh pemakaian dengan kolom baru)
-      {
-        bahanId: bahanDriFit.id,
-        namaBahan: bahanDriFit.nama,
-        aksi: 'PEMAKAIAN',
-        jumlah: 2.4,
-        stokAkhir: 47.6,
-        keterangan: 'Pemakaian bahan untuk order jersey futsal 2 set (12 pcs)',
-        actor: 'Gudang FCSV',
-        hargaBeli: 60000,
-        hargaJual: 85000,
-        totalNilai: 204000,
-        customerName: 'Joni Kustomer',  // kolom baru
-        orderId: null,                   // akan diisi setelah order dibuat
-        pcs: 12,                         // kolom baru
-      },
-    ]
+    },
   });
 
   // ============================================================
-  // 8. Seed JerseyOrder
-  //    Mencakup SEMUA kolom termasuk yang baru:
-  //    - damagedPcs (Int, default 0)
-  //    - customerName (String?)
-  //    - customerPhone (String?)
-  //    - finishingUrl (String?)
-  //    - printUrl (String?)
+  // 7. Seed JerseyOrder
+  //    NOTE: Dummy orders (SEED-ORDER-*) have been removed to prevent fake transaction data.
+  //    Real orders will be created via user transactions.
   // ============================================================
-
-  // NOTE: Dummy orders (SEED-ORDER-*) have been removed to prevent fake transaction data.
-  // Real orders will be created via user transactions.
 
   console.log('Seeding finished.');
   console.log('');
@@ -281,10 +176,6 @@ async function main() {
   console.log('Desain   : desain@fcsv.com     / password123');
   console.log('Gudang   : gudang@fcsv.com     / password123');
   console.log('Customer : customer@gmail.com  / password123');
-  console.log('');
-  console.log('== Kolom baru yang sudah diseed ==');
-  console.log('JerseyOrder   : damagedPcs, customerName, customerPhone, finishingUrl, printUrl');
-  console.log('BahanBajuHistory : customerName, orderId, pcs');
 }
 
 main()

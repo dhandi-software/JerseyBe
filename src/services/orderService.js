@@ -7,6 +7,86 @@ const {
     getSizeSurcharge
 } = require('../utils/orderUtils');
 
+const normalizeOrderPaymentFields = (order) => {
+    if (!order) return order;
+    const total = Number(order.totalAmount) || 0;
+    if (order.status === 'SELESAI') {
+        return {
+            ...order,
+            paidAmount: total,
+            remainingAmount: 0
+        };
+    }
+
+    if (order.paymentUrl === 'MENUNGGU_PEMBAYARAN_ADMIN') {
+        return {
+            ...order,
+            paymentType: 'DP',
+            paidAmount: 0,
+            remainingAmount: total
+        };
+    }
+
+    const paid = Math.min(total, Math.max(0, Number(order.paidAmount) || 0));
+    const remaining = Math.max(0, total - paid);
+
+    return {
+        ...order,
+        paymentType: remaining > 0 ? 'DP' : (order.paymentType || 'FULL'),
+        paidAmount: paid,
+        remainingAmount: remaining
+    };
+};
+
+const INTERNAL_STAFF_ROLES = ['admin', 'manager', 'desain', 'gudang'];
+
+const isInternalStaff = (user) => {
+    const role = user?.role?.toLowerCase() || '';
+    return INTERNAL_STAFF_ROLES.includes(role);
+};
+
+const assertOrderOwnerOrStaff = async (orderId, user) => {
+    const orderIdInt = parseInt(orderId, 10);
+    const order = await orderRepository.findOrderById(orderIdInt);
+    if (!order) {
+        const error = new Error('Order not found');
+        error.statusCode = 404;
+        throw error;
+    }
+
+    if (!isInternalStaff(user) && order.customerId !== user?.id) {
+        const error = new Error('Forbidden: Anda tidak memiliki akses ke pesanan ini');
+        error.statusCode = 403;
+        throw error;
+    }
+
+    return order;
+};
+
+const calculateAuthoritativeOrderTotal = async (details = []) => {
+    if (!Array.isArray(details) || details.length === 0) return 0;
+
+    const uniqueProductIds = [...new Set(
+        details.map(d => parseInt(d.productId, 10)).filter(id => !isNaN(id) && id > 0)
+    )];
+
+    const dbBahans = uniqueProductIds.length > 0
+        ? await prisma.bahanBaju.findMany({ where: { id: { in: uniqueProductIds } } })
+        : [];
+
+    const bahanPriceMap = {};
+    dbBahans.forEach(b => {
+        bahanPriceMap[b.id] = Number(b.harga) || 150000;
+    });
+
+    return details.reduce((sum, detail) => {
+        const pId = parseInt(detail.productId, 10);
+        const basePrice = bahanPriceMap[pId] || 150000;
+        const { size } = parseSizeAndSleeve(detail.playerSize || 'L');
+        return sum + basePrice + getSizeSurcharge(size);
+    }, 0);
+};
+
 const createOrder = async ({
     customerId,
     customerName,
@@ -20,7 +100,8 @@ const createOrder = async ({
     remainingAmount,
     shippingMethod,
     shippingAddress,
-    details
+    details,
+    callerRole
 }) => {
     let orderId = generateRandomId();
     let existing = await prisma.jerseyOrder.findUnique({ where: { orderId } });
@@ -29,32 +110,68 @@ const createOrder = async ({
         existing = await prisma.jerseyOrder.findUnique({ where: { orderId } });
     }
 
-    const pType = paymentType === 'DP' ? 'DP' : 'FULL';
-    const total = parseFloat(totalAmount) || 0;
+    const isCustomerCaller = (callerRole || '').toLowerCase() === 'customer';
+    const safeDetails = Array.isArray(details) ? details : [];
+    const computedTotal = await calculateAuthoritativeOrderTotal(safeDetails);
+    const total = isCustomerCaller && computedTotal > 0
+        ? computedTotal
+        : (parseFloat(totalAmount) || computedTotal || 0);
+
+    let resolvedCustomerName = customerName ? String(customerName).trim() : '';
+    let resolvedCustomerPhone = customerPhone ? String(customerPhone).trim() : '';
+    if (customerId && (!resolvedCustomerName || !resolvedCustomerPhone)) {
+        const parsedCustId = parseInt(customerId, 10);
+        if (!isNaN(parsedCustId) && parsedCustId > 0) {
+            const customerUser = await prisma.user.findUnique({
+                where: { id: parsedCustId },
+                select: { username: true, customer: { select: { nama: true, phone: true } } }
+            });
+            if (customerUser) {
+                if (!resolvedCustomerName) {
+                    resolvedCustomerName = customerUser.customer?.nama || customerUser.username || '';
+                }
+                if (!resolvedCustomerPhone && customerUser.customer?.phone) {
+                    resolvedCustomerPhone = customerUser.customer.phone;
+                }
+            }
+        }
+    }
+
+    const pType = paymentType === 'FULL' ? 'FULL' : 'DP';
     let paid = parseFloat(paidAmount);
     if (isNaN(paid) || paid < 0) {
         paid = pType === 'FULL' ? total : 0;
     }
+    paid = Math.min(total, paid);
     let remaining = parseFloat(remainingAmount);
-    if (isNaN(remaining) || remaining < 0) {
+    if (isNaN(remaining) || remaining < 0 || isCustomerCaller) {
         remaining = Math.max(0, total - paid);
     }
+
+    let safePaymentUrl = paymentUrl;
+    if (isCustomerCaller && (safePaymentUrl === 'LUNAS_ADMIN' || safePaymentUrl === 'DP_TERKONFIRMASI_ADMIN')) {
+        safePaymentUrl = 'MENUNGGU_PEMBAYARAN_ADMIN';
+    }
+
+    const resolvedPaymentUrl = pType === 'FULL'
+        ? (safePaymentUrl && safePaymentUrl !== 'MENUNGGU_PEMBAYARAN_ADMIN' ? safePaymentUrl : (isCustomerCaller ? 'MENUNGGU_PEMBAYARAN_ADMIN' : 'LUNAS_ADMIN'))
+        : (paid > 0 && safePaymentUrl === 'MENUNGGU_PEMBAYARAN_ADMIN' && !isCustomerCaller ? 'DP_TERKONFIRMASI_ADMIN' : safePaymentUrl);
 
     return await orderRepository.createOrder({
         orderId,
         customerId,
-        customerName,
-        customerPhone,
+        customerName: resolvedCustomerName || null,
+        customerPhone: resolvedCustomerPhone || null,
         totalAmount: total,
         paymentType: pType,
         paidAmount: paid,
         remainingAmount: remaining,
         designNote,
         designUrl,
-        paymentUrl,
+        paymentUrl: resolvedPaymentUrl,
         shippingMethod: shippingMethod || 'PICKUP',
         shippingAddress: shippingMethod === 'COD' ? shippingAddress : null
-    }, details.map(d => ({
+    }, safeDetails.map(d => ({
         productId: d.productId,
         productTitle: d.productTitle,
         playerName: d.playerName,
@@ -131,7 +248,7 @@ const getAllOrders = async ({ search, status } = {}) => {
     const userMap = {};
     users.forEach(u => userMap[u.id] = u.customer?.nama || u.username);
 
-    return orders.map(o => ({
+    return orders.map(o => normalizeOrderPaymentFields({
         ...o,
         isAdminOrder: !!o.customerName,
         customerName: o.customerName || userMap[o.customerId] || 'Guest User',
@@ -139,7 +256,7 @@ const getAllOrders = async ({ search, status } = {}) => {
     }));
 };
 
-const updateOrderStatus = async (id, { status, designerId, isWorking }) => {
+const updateOrderStatus = async (id, { status, designerId, isWorking, paymentType, paidAmount, remainingAmount }) => {
     const orderIdInt = parseInt(id);
     const currentOrder = await orderRepository.findOrderById(orderIdInt, { details: true });
     if (!currentOrder) {
@@ -148,10 +265,38 @@ const updateOrderStatus = async (id, { status, designerId, isWorking }) => {
         throw error;
     }
 
+    const total = Number(currentOrder.totalAmount) || 0;
     const dataUpdate = {};
     if (status !== undefined) dataUpdate.status = status;
     if (designerId !== undefined) dataUpdate.designerId = designerId;
     if (isWorking !== undefined) dataUpdate.isWorking = isWorking;
+
+    if (paymentType !== undefined) {
+        dataUpdate.paymentType = paymentType === 'FULL' ? 'FULL' : 'DP';
+    }
+    if (paidAmount !== undefined) {
+        const parsedPaid = Math.min(total, Math.max(0, parseFloat(paidAmount) || 0));
+        dataUpdate.paidAmount = parsedPaid;
+        dataUpdate.remainingAmount = remainingAmount !== undefined
+            ? Math.max(0, parseFloat(remainingAmount) || 0)
+            : Math.max(0, total - parsedPaid);
+    }
+
+    if (status === 'DESAIN') {
+        if (dataUpdate.paidAmount !== undefined) {
+            if (currentOrder.paymentUrl === 'MENUNGGU_PEMBAYARAN_ADMIN') {
+                dataUpdate.paymentUrl = dataUpdate.paidAmount >= total
+                    ? 'LUNAS_ADMIN'
+                    : (dataUpdate.paidAmount > 0 ? 'DP_TERKONFIRMASI_ADMIN' : 'MENUNGGU_PEMBAYARAN_ADMIN');
+            }
+        }
+    } else if (status === 'SELESAI') {
+        dataUpdate.paidAmount = total;
+        dataUpdate.remainingAmount = 0;
+        if (currentOrder.paymentUrl === 'MENUNGGU_PEMBAYARAN_ADMIN' || currentOrder.paymentUrl === 'DP_TERKONFIRMASI_ADMIN') {
+            dataUpdate.paymentUrl = 'LUNAS_ADMIN';
+        }
+    }
 
     return await prisma.$transaction(async (tx) => {
         if (status === 'DESAIN' && !currentOrder.queueNumber) {
@@ -255,7 +400,7 @@ const getOrdersByCustomer = async (customerId) => {
         }
     });
 
-    return orders.map(o => ({
+    return orders.map(o => normalizeOrderPaymentFields({
         ...o,
         customerName: o.customerName || (user ? (user.customer?.nama || user.username) : 'Guest User'),
         designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : 'Belum Ada'
@@ -282,14 +427,21 @@ const getOrdersByDesigner = async (designerId) => {
     const userMap = {};
     users.forEach(u => userMap[u.id] = u.customer?.nama || u.username);
 
-    return orders.map(o => ({
+    return orders.map(o => normalizeOrderPaymentFields({
         ...o,
         customerName: o.customerName || userMap[o.customerId] || 'Guest User',
         designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : 'Belum Ada'
     }));
 };
 
-const trackOrder = async (orderId) => {
+const maskPhoneNumber = (phone) => {
+    if (!phone || typeof phone !== 'string') return null;
+    const trimmed = phone.trim();
+    if (trimmed.length <= 6) return '***';
+    return `${trimmed.slice(0, 4)}****${trimmed.slice(-2)}`;
+};
+
+const trackOrder = async (orderId, callerUser = null) => {
     const order = await prisma.jerseyOrder.findFirst({
         where: {
             orderId: {
@@ -317,26 +469,49 @@ const trackOrder = async (orderId) => {
         }
     });
 
-    return {
+    const normalized = normalizeOrderPaymentFields({
         ...order,
         customerName: order.customerName || (user ? (user.customer?.nama || user.username) : 'Guest User'),
         designerName: order.designer ? (order.designer.staff?.nama || order.designer.username) : 'Belum Ada'
+    });
+
+    const isOwnerOrStaff = Boolean(
+        callerUser && (isInternalStaff(callerUser) || callerUser.id === order.customerId)
+    );
+
+    if (isOwnerOrStaff) {
+        return normalized;
+    }
+
+    return {
+        ...normalized,
+        customerPhone: maskPhoneNumber(normalized.customerPhone),
+        shippingAddress: normalized.shippingAddress ? 'Alamat Terlindungi' : null,
+        paymentUrl: normalized.paymentUrl && normalized.paymentUrl !== 'MENUNGGU_PEMBAYARAN_ADMIN'
+            ? 'TERVERIFIKASI'
+            : normalized.paymentUrl
     };
 };
 
-const updateOrder = async (id, { totalAmount, designNote, designUrl, paymentUrl, shippingMethod, shippingAddress, details }) => {
+const updateOrder = async (id, { totalAmount, designNote, designUrl, paymentUrl, shippingMethod, shippingAddress, details }, callerUser = null) => {
     const orderIdInt = parseInt(id);
-    const currentOrder = await orderRepository.findOrderById(orderIdInt);
-    if (!currentOrder) {
-        const error = new Error('Order not found');
-        error.statusCode = 404;
-        throw error;
-    }
+    const currentOrder = await assertOrderOwnerOrStaff(orderIdInt, callerUser);
 
     if (currentOrder.status !== 'MENUNGGU') {
         const error = new Error('Pesanan yang sudah di-acc tidak dapat diedit.');
         error.statusCode = 400;
         throw error;
+    }
+
+    const isCustomerCaller = (callerUser?.role || '').toLowerCase() === 'customer';
+    const computedTotal = await calculateAuthoritativeOrderTotal(details);
+    const resolvedTotal = isCustomerCaller && computedTotal > 0
+        ? computedTotal
+        : (parseFloat(totalAmount) || computedTotal || currentOrder.totalAmount);
+
+    let safePaymentUrl = paymentUrl;
+    if (isCustomerCaller && (safePaymentUrl === 'LUNAS_ADMIN' || safePaymentUrl === 'DP_TERKONFIRMASI_ADMIN')) {
+        safePaymentUrl = currentOrder.paymentUrl;
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -347,10 +522,10 @@ const updateOrder = async (id, { totalAmount, designNote, designUrl, paymentUrl,
         return await tx.jerseyOrder.update({
             where: { id: orderIdInt },
             data: {
-                totalAmount,
+                totalAmount: resolvedTotal,
                 designNote,
                 designUrl,
-                paymentUrl,
+                paymentUrl: safePaymentUrl,
                 shippingMethod: shippingMethod !== undefined ? shippingMethod : currentOrder.shippingMethod,
                 shippingAddress: shippingMethod !== undefined ? (shippingMethod === 'COD' ? shippingAddress : null) : currentOrder.shippingAddress,
                 details: {
@@ -386,28 +561,48 @@ const uploadMockup = async (id, file) => {
     });
 };
 
-const updatePayment = async (id, paymentData) => {
+const updatePayment = async (id, paymentData, callerUser = null) => {
+    const current = await assertOrderOwnerOrStaff(id, callerUser);
+    const total = Number(current?.totalAmount) || 0;
+    const isCustomerCaller = (callerUser?.role || '').toLowerCase() === 'customer';
     let dataToUpdate = {};
+
     if (typeof paymentData === 'object' && paymentData !== null) {
-        if (paymentData.paymentUrl !== undefined) dataToUpdate.paymentUrl = paymentData.paymentUrl;
-        if (paymentData.paymentType !== undefined) dataToUpdate.paymentType = paymentData.paymentType;
-        if (paymentData.paidAmount !== undefined) dataToUpdate.paidAmount = parseFloat(paymentData.paidAmount) || 0;
-        if (paymentData.remainingAmount !== undefined) {
-            dataToUpdate.remainingAmount = parseFloat(paymentData.remainingAmount) || 0;
-        } else if (paymentData.paidAmount !== undefined) {
-            const current = await orderRepository.findOrderById(id);
-            if (current) {
-                dataToUpdate.remainingAmount = Math.max(0, (current.totalAmount || 0) - dataToUpdate.paidAmount);
+        if (paymentData.paymentUrl !== undefined) {
+            if (isCustomerCaller && (paymentData.paymentUrl === 'LUNAS_ADMIN' || paymentData.paymentUrl === 'DP_TERKONFIRMASI_ADMIN')) {
+                const error = new Error('Forbidden: Status pembayaran tidak valid');
+                error.statusCode = 403;
+                throw error;
+            }
+            dataToUpdate.paymentUrl = paymentData.paymentUrl;
+        }
+        if (!isCustomerCaller) {
+            if (paymentData.paymentType !== undefined) dataToUpdate.paymentType = paymentData.paymentType;
+            if (paymentData.paidAmount !== undefined) dataToUpdate.paidAmount = parseFloat(paymentData.paidAmount) || 0;
+            if (paymentData.remainingAmount !== undefined) {
+                dataToUpdate.remainingAmount = parseFloat(paymentData.remainingAmount) || 0;
+            } else if (paymentData.paidAmount !== undefined) {
+                dataToUpdate.remainingAmount = Math.max(0, total - dataToUpdate.paidAmount);
+            }
+
+            if (dataToUpdate.paymentUrl === undefined && current) {
+                const isPlaceholderUrl = current.paymentUrl === 'MENUNGGU_PEMBAYARAN_ADMIN' || current.paymentUrl === 'DP_TERKONFIRMASI_ADMIN' || current.paymentUrl === 'LUNAS_ADMIN';
+                if (isPlaceholderUrl) {
+                    const effectivePaid = dataToUpdate.paidAmount !== undefined ? dataToUpdate.paidAmount : (Number(current.paidAmount) || 0);
+                    const effectiveRem = dataToUpdate.remainingAmount !== undefined ? dataToUpdate.remainingAmount : Math.max(0, total - effectivePaid);
+                    dataToUpdate.paymentUrl = effectiveRem <= 0 && effectivePaid >= total ? 'LUNAS_ADMIN' : 'DP_TERKONFIRMASI_ADMIN';
+                }
             }
         }
     } else if (typeof paymentData === 'string') {
         dataToUpdate.paymentUrl = paymentData;
     }
 
-    return await orderRepository.updateOrder(id, dataToUpdate, {
+    const updated = await orderRepository.updateOrder(id, dataToUpdate, {
         details: true,
         designer: { select: { staff: { select: { nama: true } }, username: true } }
     });
+    return normalizeOrderPaymentFields(updated);
 };
 
 const approveDesign = async (id) => {
@@ -789,7 +984,7 @@ const addOrderDetail = async (orderId, { playerName, playerNumber, playerSize, s
     if (order.totalAmount > 0 && order.details && order.details.length > 0) {
         unitPrice = Math.round(order.totalAmount / order.details.length);
     } else if (productId) {
-        const bahan = await bahanBajuRepository.findBahanBajuById(productId);
+        const bahan = await bahanBajuRepository.findBahanById(productId);
         if (bahan?.harga) unitPrice = bahan.harga;
     }
 
@@ -871,6 +1066,7 @@ const updateVideoNotes = async (id, { videoUrl, adminNote, designNote }) => {
 };
 
 module.exports = {
+    assertOrderOwnerOrStaff,
     createOrder,
     getAllOrders,
     updateOrderStatus,

@@ -25,8 +25,14 @@ const isOriginAllowed = (origin) => {
     if (ALLOWED_ORIGINS.includes(origin)) return true;
     try {
         const { hostname } = new URL(origin);
-        if (hostname === 'localhost' || hostname === '127.0.0.1') return true;
-    } catch (e) {
+        if (
+            hostname === 'localhost' ||
+            hostname === '127.0.0.1' ||
+            hostname.endsWith('.trycloudflare.com')
+        ) {
+            return true;
+        }
+    } catch {
         return false;
     }
     return false;
@@ -43,12 +49,16 @@ app.use(cors({
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     optionsSuccessStatus: 200
 }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 app.use(cookieParser());
 
-// Static file serving with traversal protection and WebP fallback
+// Static file serving with traversal protection, security headers, and WebP fallback
 const uploadsDir = path.resolve(__dirname, '../uploads');
 app.use('/uploads', (req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+
     const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
     const resolvedPath = path.resolve(uploadsDir, '.' + safePath);
 
@@ -57,6 +67,10 @@ app.use('/uploads', (req, res, next) => {
     }
 
     const ext = path.extname(resolvedPath).toLowerCase();
+    if (ext === '.pdf') {
+        res.setHeader('Content-Disposition', 'inline');
+    }
+
     if (['.jpg', '.jpeg', '.png'].includes(ext)) {
         if (!fs.existsSync(resolvedPath)) {
             const webpPath = resolvedPath.slice(0, -ext.length) + '.webp';
@@ -90,7 +104,13 @@ app.use(errorHandler);
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: (origin, callback) => {
+            if (isOriginAllowed(origin)) {
+                return callback(null, true);
+            }
+            return callback(new Error('Blocked by Socket CORS policy'));
+        },
+        credentials: true,
         methods: ["GET", "POST"]
     }
 });

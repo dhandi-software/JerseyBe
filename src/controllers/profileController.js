@@ -1,11 +1,21 @@
 const userService = require('../services/userService');
 
+const INTERNAL_STAFF_ROLES = ['admin', 'manager', 'desain', 'gudang'];
+
 const getProfile = async (req, res) => {
     try {
-        const targetId = req.params.id || req.user?.id;
-        if (!targetId) {
+        const targetId = req.params.id ? parseInt(req.params.id, 10) : req.user?.id;
+        if (!targetId || isNaN(targetId)) {
             return res.status(400).json({ message: 'User ID is required' });
         }
+
+        const currentUserId = parseInt(req.user?.id, 10);
+        const role = (req.user?.role || '').toLowerCase();
+
+        if (currentUserId !== targetId && !INTERNAL_STAFF_ROLES.includes(role)) {
+            return res.status(403).json({ message: 'Forbidden: Tidak dapat melihat profil pengguna lain' });
+        }
+
         const profile = await userService.getProfile(targetId);
 
         res.status(200).json({
@@ -30,7 +40,7 @@ const updateProfile = async (req, res) => {
         const currentUserId = parseInt(req.user?.id, 10);
         const role = req.user?.role?.toLowerCase();
 
-        if (currentUserId !== targetUserId && role !== 'admin') {
+        if (currentUserId !== targetUserId && role !== 'admin' && role !== 'manager') {
             return res.status(403).json({ message: 'Forbidden: Tidak dapat mengubah profil pengguna lain' });
         }
 

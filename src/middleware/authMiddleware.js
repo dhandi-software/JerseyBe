@@ -50,6 +50,43 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
+const verifyTokenAndGetUser = async (token) => {
+    if (!token) return null;
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        if (!decoded || !decoded.id) return null;
+        const userId = parseInt(decoded.id, 10);
+        if (isNaN(userId)) return null;
+
+        return await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                role: true
+            }
+        });
+    } catch {
+        return null;
+    }
+};
+
+const optionalAuthenticateToken = async (req, res, next) => {
+    let token = req.cookies?.token;
+    if (!token) {
+        const authHeader = req.headers['authorization'];
+        token = authHeader && authHeader.split(' ')[1];
+    }
+    if (token) {
+        const user = await verifyTokenAndGetUser(token);
+        if (user) {
+            req.user = user;
+        }
+    }
+    next();
+};
+
 const authorizeRoles = (...allowedRoles) => {
     const roles = allowedRoles.map(r => r.toLowerCase());
     return (req, res, next) => {
@@ -63,4 +100,9 @@ const authorizeRoles = (...allowedRoles) => {
     };
 };
 
-module.exports = { authenticateToken, authorizeRoles };
+module.exports = {
+    authenticateToken,
+    optionalAuthenticateToken,
+    authorizeRoles,
+    verifyTokenAndGetUser
+};
