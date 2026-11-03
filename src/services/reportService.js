@@ -1,5 +1,12 @@
 const prisma = require('../config/prisma');
 
+const toLocalDateKey = (d) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const getOrderRecognizedRevenue = (order) => {
     if (!order || order.status === 'DITOLAK') return 0;
     const total = Number(order.totalAmount) || 0;
@@ -22,8 +29,7 @@ const getDashboardStats = async ({ year, month }) => {
     const filterYear = year ? parseInt(year) : null;
     const filterMonth = month ? parseInt(month) : null;
 
-    const [totalCustomer, totalStaff, totalAdmin] = await Promise.all([
-        prisma.user.count({ where: { role: 'customer' } }),
+    const [totalStaff, totalAdmin] = await Promise.all([
         prisma.user.count({ where: { role: { in: ['desain', 'gudang', 'manager'] } } }),
         prisma.user.count({ where: { role: 'admin' } })
     ]);
@@ -35,6 +41,7 @@ const getDashboardStats = async ({ year, month }) => {
                 orderId: { startsWith: 'SEED-' }
             }
         },
+        orderBy: { createdAt: 'desc' },
         select: {
             id: true,
             customerId: true,
@@ -46,16 +53,48 @@ const getDashboardStats = async ({ year, month }) => {
             paidAmount: true,
             remainingAmount: true,
             createdAt: true,
-            details: { select: { id: true } }
+            details: { select: { id: true, productTitle: true } }
         }
     });
 
-    const accOrders = rawOrders
-        .map(order => ({
+    const orderUserIds = [...new Set(rawOrders.map(o => o.customerId).filter(Boolean))];
+    const orderUsers = orderUserIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: orderUserIds } },
+            select: {
+                id: true,
+                username: true,
+                email: true,
+                role: true,
+                customer: { select: { id: true, nama: true, category: true } }
+            }
+        })
+        : [];
+    const orderUserMap = new Map(orderUsers.map(u => [u.id, u]));
+
+    const INVALID_NAMES = new Set(['', 'ADMIN', 'STAFF FCSV', 'MANAGER', 'DESAIN', 'GUDANG', 'GUEST USER', 'PELANGGAN', 'TANPA NAMA']);
+    const isValidCustomerName = (name) => {
+        if (!name || typeof name !== 'string') return false;
+        return !INVALID_NAMES.has(name.trim().toUpperCase());
+    };
+
+    const enrichedOrders = rawOrders.map(order => {
+        const u = orderUserMap.get(order.customerId);
+        const isCustomerAccount = (u?.role || '').toLowerCase() === 'customer';
+        const trimmedOrderName = (order.customerName || '').trim();
+        const resolvedCustomerName = isCustomerAccount
+            ? (trimmedOrderName || u?.customer?.nama || u?.username || '')
+            : (isValidCustomerName(trimmedOrderName) ? trimmedOrderName : '');
+        return {
             ...order,
+            isAdminOrder: !isCustomerAccount,
+            resolvedCustomerName,
+            customerAccountUser: isCustomerAccount ? u : null,
             recognizedRevenue: getOrderRecognizedRevenue(order)
-        }))
-        .filter(order => order.recognizedRevenue > 0);
+        };
+    });
+
+    const accOrders = enrichedOrders.filter(order => order.recognizedRevenue > 0);
 
     const totalRevenue = accOrders.reduce((sum, order) => sum + order.recognizedRevenue, 0);
     const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
@@ -64,7 +103,7 @@ const getDashboardStats = async ({ year, month }) => {
     for (let i = 29; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = toLocalDateKey(d);
         const name = `${d.getDate()} ${monthNames[d.getMonth()]}`;
         dailySales.push({ name, pv: 0, dateStr });
     }
@@ -104,7 +143,7 @@ const getDashboardStats = async ({ year, month }) => {
 
     accOrders.forEach(order => {
         const date = new Date(order.createdAt);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = toLocalDateKey(date);
         const orderYear = date.getFullYear();
         const orderMonth = date.getMonth();
         const monthKey = `${orderYear}-${orderMonth}`;
@@ -147,14 +186,15 @@ const getDashboardStats = async ({ year, month }) => {
 
     const buyerStats = {};
     accOrders.forEach(order => {
-        const trimmedName = (order.customerName || '').trim();
-        const buyerKey = trimmedName ? `name:${trimmedName.toUpperCase()}` : `user:${order.customerId}`;
+        const resolvedName = (order.resolvedCustomerName || '').trim();
+        if (!isValidCustomerName(resolvedName)) return;
+        const buyerKey = resolvedName.toUpperCase();
         if (!buyerStats[buyerKey]) {
             buyerStats[buyerKey] = {
                 totalAmount: 0,
                 orderCount: 0,
-                customerId: order.customerId,
-                customerName: trimmedName || null
+                customerName: resolvedName,
+                category: order.isAdminOrder ? 'Pesanan Admin' : (order.customerAccountUser?.customer?.category || 'Pesanan Customer')
             };
         }
         buyerStats[buyerKey].totalAmount += order.recognizedRevenue;
@@ -170,70 +210,17 @@ const getDashboardStats = async ({ year, month }) => {
 
     let topBuyer = { name: 'Belum ada', category: '-', initial: '-' };
     if (topBuyerEntry) {
-        if (topBuyerEntry.customerName) {
-            topBuyer = {
-                name: topBuyerEntry.customerName,
-                category: 'Customer Pesanan',
-                initial: topBuyerEntry.customerName.substring(0, 3).toUpperCase()
-            };
-        } else {
-            const customer = await prisma.customer.findUnique({ where: { userId: topBuyerEntry.customerId } });
-            if (customer) {
-                topBuyer = {
-                    name: customer.nama,
-                    category: customer.category || 'General',
-                    initial: customer.nama.substring(0, 3).toUpperCase()
-                };
-            } else {
-                const user = await prisma.user.findUnique({ where: { id: topBuyerEntry.customerId } });
-                if (user) {
-                    topBuyer = {
-                        name: user.username,
-                        category: 'Customer',
-                        initial: user.username.substring(0, 3).toUpperCase()
-                    };
-                }
-            }
-        }
+        topBuyer = {
+            name: topBuyerEntry.customerName,
+            category: topBuyerEntry.category,
+            initial: topBuyerEntry.customerName.substring(0, 3).toUpperCase()
+        };
     }
 
-    const latestOrdersRaw = await prisma.jerseyOrder.findMany({
-        where: {
-            NOT: {
-                orderId: { startsWith: 'SEED-' }
-            }
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 5,
-        select: { id: true, customerId: true, customerName: true }
-    });
-
-    const missingUserIds = [...new Set(
-        latestOrdersRaw
-            .filter(lo => !lo.customerName || !lo.customerName.trim())
-            .map(lo => lo.customerId)
-            .filter(Boolean)
-    )];
-
-    const latestOrderUsers = missingUserIds.length > 0
-        ? await prisma.user.findMany({
-            where: { id: { in: missingUserIds } },
-            select: { id: true, username: true, customer: { select: { nama: true } } }
-        })
-        : [];
-    const latestOrderUserMap = new Map(
-        latestOrderUsers.map(u => [u.id, u.customer?.nama || u.username])
-    );
-
-    const newOrders = latestOrdersRaw
-        .map(lo => {
-            if (lo.customerName && lo.customerName.trim()) {
-                return { name: lo.customerName.trim() };
-            }
-            const resolvedName = latestOrderUserMap.get(lo.customerId);
-            return resolvedName ? { name: resolvedName } : null;
-        })
-        .filter(Boolean);
+    const newOrders = enrichedOrders
+        .filter(o => isValidCustomerName(o.resolvedCustomerName))
+        .slice(0, 5)
+        .map(o => ({ name: o.resolvedCustomerName }));
 
     const recentMessages = await prisma.message.findMany({
         where: {
@@ -254,36 +241,41 @@ const getDashboardStats = async ({ year, month }) => {
     recentMessages.forEach(msg => {
         if (msg.sender?.customer && !recentChattersMap.has(msg.sender.id)) {
             recentChattersMap.set(msg.sender.id, {
-                id: msg.sender.id, customerId: msg.sender.customer.id, nama: msg.sender.customer.nama,
-                email: msg.sender.email, lastMessageAt: msg.createdAt,
-                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru')),
-                category: msg.sender.customer.category || 'General Customer'
+                lastMessageAt: msg.createdAt,
+                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru'))
             });
         }
         if (msg.receiver?.customer && !recentChattersMap.has(msg.receiver.id)) {
             recentChattersMap.set(msg.receiver.id, {
-                id: msg.receiver.id, customerId: msg.receiver.customer.id, nama: msg.receiver.customer.nama,
-                email: msg.receiver.email, lastMessageAt: msg.createdAt,
-                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru')),
-                category: msg.receiver.customer.category || 'General Customer'
+                lastMessageAt: msg.createdAt,
+                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru'))
             });
         }
     });
 
-    let recentCustomers = Array.from(recentChattersMap.values()).slice(0, 5);
+    const uniqueOrderCustomersMap = new Map();
+    enrichedOrders.forEach(order => {
+        if (!isValidCustomerName(order.resolvedCustomerName)) return;
+        const key = order.resolvedCustomerName.toUpperCase();
+        if (!uniqueOrderCustomersMap.has(key)) {
+            const chatInfo = order.customerAccountUser ? recentChattersMap.get(order.customerAccountUser.id) : null;
+            const productTitle = order.details?.[0]?.productTitle;
+            const sourceLabel = order.isAdminOrder ? 'Pesanan Admin' : 'Pesanan Customer';
+            uniqueOrderCustomersMap.set(key, {
+                id: order.customerAccountUser ? order.customerAccountUser.id : order.id,
+                customerId: order.customerAccountUser?.customer?.id || order.id,
+                nama: order.resolvedCustomerName,
+                email: order.customerAccountUser?.email || '',
+                isAdminOrder: order.isAdminOrder,
+                lastMessageAt: chatInfo?.lastMessageAt || null,
+                lastMessageContent: chatInfo?.lastMessageContent || undefined,
+                category: productTitle ? `${productTitle} • ${sourceLabel}` : sourceLabel
+            });
+        }
+    });
 
-    if (recentCustomers.length < 5) {
-        const latestCustomers = await prisma.customer.findMany({
-            where: { userId: { notIn: recentCustomers.map(c => c.id) } },
-            include: { user: { select: { id: true, email: true } } },
-            orderBy: { id: 'desc' },
-            take: 5 - recentCustomers.length
-        });
-        recentCustomers = [...recentCustomers, ...latestCustomers.map(c => ({
-            id: c.user.id, customerId: c.id, nama: c.nama, email: c.user.email,
-            lastMessageAt: null, category: c.category || 'New Customer'
-        }))];
-    }
+    const totalCustomer = uniqueOrderCustomersMap.size;
+    const recentCustomers = Array.from(uniqueOrderCustomersMap.values()).slice(0, 5);
 
     const recentChatsData = await prisma.message.findMany({
         where: {
@@ -393,8 +385,8 @@ const getOmsetReport = async ({ startDate, endDate }) => {
     let dateFilter = {};
     if (startDate && endDate) {
         dateFilter = {
-            gte: new Date(startDate),
-            lte: new Date(endDate + 'T23:59:59.999Z')
+            gte: new Date(startDate + 'T00:00:00'),
+            lte: new Date(endDate + 'T23:59:59.999')
         };
     }
 

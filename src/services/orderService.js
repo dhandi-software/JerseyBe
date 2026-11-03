@@ -118,20 +118,20 @@ const createOrder = async ({
         : (parseFloat(totalAmount) || computedTotal || 0);
 
     let resolvedCustomerName = customerName ? String(customerName).trim() : '';
-    let resolvedCustomerPhone = customerPhone ? String(customerPhone).trim() : '';
-    if (customerId && (!resolvedCustomerName || !resolvedCustomerPhone)) {
+    let resolvedCustomerPhone = customerPhone ? String(customerPhone).replace(/\D/g, '').trim() : '';
+    if (customerId) {
         const parsedCustId = parseInt(customerId, 10);
         if (!isNaN(parsedCustId) && parsedCustId > 0) {
             const customerUser = await prisma.user.findUnique({
                 where: { id: parsedCustId },
-                select: { username: true, customer: { select: { nama: true, phone: true } } }
+                select: { username: true, role: true, customer: { select: { nama: true, phone: true } } }
             });
-            if (customerUser) {
+            if (customerUser && (customerUser.role || '').toLowerCase() === 'customer') {
                 if (!resolvedCustomerName) {
                     resolvedCustomerName = customerUser.customer?.nama || customerUser.username || '';
                 }
                 if (!resolvedCustomerPhone && customerUser.customer?.phone) {
-                    resolvedCustomerPhone = customerUser.customer.phone;
+                    resolvedCustomerPhone = String(customerUser.customer.phone).replace(/\D/g, '');
                 }
             }
         }
@@ -241,19 +241,37 @@ const getAllOrders = async ({ search, status } = {}) => {
         select: {
             id: true,
             username: true,
+            role: true,
             customer: { select: { nama: true } }
         }
     });
 
     const userMap = {};
-    users.forEach(u => userMap[u.id] = u.customer?.nama || u.username);
+    const userRoleMap = {};
+    users.forEach(u => {
+        const role = (u.role || '').toLowerCase();
+        userRoleMap[u.id] = role;
+        if (role === 'customer') {
+            userMap[u.id] = u.customer?.nama || u.username;
+        }
+    });
 
-    return orders.map(o => normalizeOrderPaymentFields({
-        ...o,
-        isAdminOrder: !!o.customerName,
-        customerName: o.customerName || userMap[o.customerId] || 'Guest User',
-        designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : 'Belum Ada'
-    }));
+    return orders.map(o => {
+        const isCustomerAccount = userRoleMap[o.customerId] === 'customer';
+        const rawTrimmedName = o.customerName ? String(o.customerName).trim() : '';
+        const isInternalAccountName = ['admin', 'staff fcsv', 'manager', 'desain', 'gudang'].includes(rawTrimmedName.toLowerCase());
+        const trimmedOrderName = isInternalAccountName ? '' : rawTrimmedName;
+        const resolvedCustomerName = isCustomerAccount
+            ? (trimmedOrderName || userMap[o.customerId] || 'Pelanggan')
+            : (trimmedOrderName || '');
+
+        return normalizeOrderPaymentFields({
+            ...o,
+            isAdminOrder: !isCustomerAccount,
+            customerName: resolvedCustomerName,
+            designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : 'Belum Ada'
+        });
+    });
 };
 
 const updateOrderStatus = async (id, { status, designerId, isWorking, paymentType, paidAmount, remainingAmount }) => {

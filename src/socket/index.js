@@ -68,7 +68,7 @@ module.exports = (io) => {
     });
 
     socket.on('send_message', async (data) => {
-      const { receiverId, roomId, content, attachmentUrl, attachmentName, attachmentType, isPublic, replyToId } = data || {};
+      const { receiverId, roomId, content, attachmentUrl, attachmentName, attachmentType, isPublic, replyToId, tempId } = data || {};
       const senderId = authenticatedUser.id;
       const senderRole = (authenticatedUser.role || '').toLowerCase();
 
@@ -153,15 +153,21 @@ module.exports = (io) => {
           message.sender.username = fullName;
         }
 
+        const sentPayload = tempId ? { ...message, tempId } : message;
+
         if (isPublic) {
-          io.to('public_room').emit('receive_message', message);
+          socket.to('public_room').emit('receive_message', message);
+          socket.emit('message_sent', sentPayload);
         } else if (roomId) {
           const rid = parseInt(roomId, 10);
           socket.to(`room_${rid}`).emit('receive_message', message);
-          socket.emit('message_sent', message);
+          socket.emit('message_sent', sentPayload);
         } else {
-          io.to(`user_${receiverId}`).emit('receive_message', message);
-          socket.emit('message_sent', message);
+          const targetReceiverId = parseInt(receiverId, 10);
+          if (targetReceiverId !== senderId) {
+            io.to(`user_${targetReceiverId}`).emit('receive_message', message);
+          }
+          socket.emit('message_sent', sentPayload);
         }
       } catch (error) {
         console.error('Error sending message:', error);
