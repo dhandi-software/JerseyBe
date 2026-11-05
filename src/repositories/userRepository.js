@@ -1,17 +1,24 @@
 const prisma = require('../config/prisma');
 
-const findUserById = async (id, include = { customer: true, staff: true }) => {
-    return await prisma.user.findUnique({
-        where: { id: parseInt(id) },
-        include
-    });
+const findUserById = async (id, options = { customer: true, staff: true }, tx = prisma) => {
+    const query = {
+        where: { id: parseInt(id, 10) }
+    };
+    if (options && options.select) {
+        query.select = options.select;
+    } else if (options && options.include) {
+        query.include = options.include;
+    } else if (options) {
+        query.include = options;
+    }
+    return await tx.user.findUnique(query);
 };
 
-const findUserByEmail = async (email) => {
+const findUserByEmail = async (email, tx = prisma) => {
     if (typeof email !== 'string' || !email.trim()) {
         return null;
     }
-    return await prisma.user.findUnique({
+    return await tx.user.findUnique({
         where: { email: email.trim().toLowerCase() },
         include: {
             customer: true,
@@ -20,12 +27,12 @@ const findUserByEmail = async (email) => {
     });
 };
 
-const findUserByIdentifier = async (identifier) => {
+const findUserByIdentifier = async (identifier, tx = prisma) => {
     if (typeof identifier !== 'string' || !identifier.trim()) {
         return null;
     }
     const clean = identifier.trim();
-    return await prisma.user.findFirst({
+    return await tx.user.findFirst({
         where: {
             OR: [
                 { username: { equals: clean, mode: 'insensitive' } },
@@ -39,33 +46,33 @@ const findUserByIdentifier = async (identifier) => {
     });
 };
 
-const findUsers = async (where = {}, select = null, orderBy = null) => {
+const findUsers = async (where = {}, select = null, orderBy = null, tx = prisma) => {
     const query = { where };
     if (select) query.select = select;
     if (orderBy) query.orderBy = orderBy;
-    return await prisma.user.findMany(query);
+    return await tx.user.findMany(query);
 };
 
-const countUsers = async (where = {}) => {
-    return await prisma.user.count({ where });
+const countUsers = async (where = {}, tx = prisma) => {
+    return await tx.user.count({ where });
 };
 
-const createUser = async (data) => {
-    return await prisma.user.create({ data });
+const createUser = async (data, tx = prisma) => {
+    return await tx.user.create({ data });
 };
 
-const updateUser = async (id, data, include = null) => {
+const updateUser = async (id, data, include = null, tx = prisma) => {
     const query = {
-        where: { id: parseInt(id) },
+        where: { id: parseInt(id, 10) },
         data
     };
     if (include) query.include = include;
-    return await prisma.user.update(query);
+    return await tx.user.update(query);
 };
 
-const deleteUser = async (id) => {
-    return await prisma.user.delete({
-        where: { id: parseInt(id) }
+const deleteUser = async (id, tx = prisma) => {
+    return await tx.user.delete({
+        where: { id: parseInt(id, 10) }
     });
 };
 
@@ -119,7 +126,7 @@ const updateProfileWithTransaction = async (userId, userUpdateData, profileUpdat
     return await prisma.$transaction(async (tx) => {
         if (Object.keys(userUpdateData).length > 0) {
             await tx.user.update({
-                where: { id: parseInt(userId) },
+                where: { id: parseInt(userId, 10) },
                 data: userUpdateData
             });
         }
@@ -140,6 +147,29 @@ const updateProfileWithTransaction = async (userId, userUpdateData, profileUpdat
     });
 };
 
+const findCustomerUserIdsByQuery = async (queryText, tx = prisma) => {
+    if (!queryText || !queryText.trim()) return [];
+    const clean = queryText.trim();
+    const users = await tx.user.findMany({
+        where: {
+            OR: [
+                { username: { contains: clean, mode: 'insensitive' } },
+                { customer: { nama: { contains: clean, mode: 'insensitive' } } }
+            ]
+        },
+        select: { id: true }
+    });
+    return users.map(u => u.id);
+};
+
+const findUsersByIds = async (ids, select = null, tx = prisma) => {
+    const query = {
+        where: { id: { in: ids } }
+    };
+    if (select) query.select = select;
+    return await tx.user.findMany(query);
+};
+
 module.exports = {
     findUserById,
     findUserByEmail,
@@ -151,5 +181,7 @@ module.exports = {
     deleteUser,
     createCustomerWithTransaction,
     createStaffWithTransaction,
-    updateProfileWithTransaction
+    updateProfileWithTransaction,
+    findCustomerUserIdsByQuery,
+    findUsersByIds
 };

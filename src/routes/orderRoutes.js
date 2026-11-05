@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const orderController = require('../controllers/orderController');
+const customerTrackingController = require('../controllers/customerTrackingController');
 const upload = require('../middleware/upload');
 
 const {
@@ -25,10 +26,15 @@ router.get('/track/:orderId', trackLimiter, optionalAuthenticateToken, orderCont
 // Authenticated order management
 router.use(authenticateToken);
 
+// Customer Repeat Tracking Core (R4) - Mounted before /:id parameterized routes
+router.get('/customers/suggest', authorizeRoles(...STAFF_ROLES), customerTrackingController.suggestCustomers);
+router.get('/customers/history', authorizeRoles(...STAFF_ROLES), customerTrackingController.getCustomerHistory);
+
 // Order CRUD & queries
 router.post('/', orderController.createOrder);
 router.get('/', authorizeRoles(...STAFF_ROLES), orderController.getAllOrders);
 router.patch('/:id/status', authorizeRoles(...STAFF_ROLES), orderController.updateOrderStatus);
+router.patch('/:id/storage-location', authorizeRoles('admin', 'gudang'), orderController.updateOrderStorageLocation);
 router.get('/customer/:customerId', orderController.getOrdersByCustomer);
 router.get('/designer/:designerId', authorizeRoles(...STAFF_ROLES), orderController.getOrdersByDesigner);
 router.put('/:id', orderController.updateOrder);
@@ -40,7 +46,10 @@ router.delete('/detail/:detailId', authorizeRoles(...STAFF_ROLES), orderControll
 
 // Design & Mockup workflow
 router.post('/:id/mockup', authorizeRoles(...STAFF_ROLES), upload.single('mockup'), orderController.uploadMockup);
+// Payment & Installment Ledger workflow
 router.patch('/:id/payment', orderController.updatePayment);
+router.post('/:id/payments', orderController.addPaymentInstallment);
+router.get('/:id/payments', orderController.getPaymentInstallments);
 router.patch('/:id/approve-design', orderController.approveDesign);
 router.patch('/:id/unapprove-design', orderController.unapproveDesign);
 router.patch('/:id/revisi-design', orderController.revisiDesign);

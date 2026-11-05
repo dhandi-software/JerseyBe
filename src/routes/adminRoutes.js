@@ -11,7 +11,6 @@ const {
     deleteUsersBatch,
     getUserById,
     getDashboardStats,
-    getAllChatCustomers,
     getDesigners,
     getOmsetReport
 } = require('../controllers/adminController');
@@ -30,7 +29,6 @@ router.post('/users/batch-delete', authorizeRoles('admin', 'manager'), deleteUse
 router.get('/designers', authorizeRoles('admin', 'manager', 'desain', 'gudang'), getDesigners);
 router.get('/dashboard-stats', authorizeRoles('admin', 'manager'), getDashboardStats);
 router.get('/omset-report', authorizeRoles('admin', 'manager'), getOmsetReport);
-router.get('/chat-customers', authorizeRoles('admin', 'manager', 'desain', 'gudang'), getAllChatCustomers);
 
 router.get('/users/:id', authorizeRoles('admin', 'manager'), getUserById);
 router.put('/users/:id', authorizeRoles('admin', 'manager'), updateUser);

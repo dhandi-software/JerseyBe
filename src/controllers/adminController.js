@@ -153,15 +153,6 @@ const getDesigners = async (req, res) => {
     }
 };
 
-const getAllChatCustomers = async (req, res) => {
-    try {
-        const chatters = await userService.getAllChatCustomers();
-        res.json({ data: chatters });
-    } catch (error) {
-        res.status(500).json({ message: 'Internal Server Error' });
-    }
-};
-
 const getDashboardStats = async (req, res) => {
     try {
         const { year, month } = req.query;
@@ -205,7 +196,6 @@ module.exports = {
     deleteUsersBatch,
     getUserById,
     getDashboardStats,
-    getAllChatCustomers,
     getDesigners,
     getOmsetReport
 };

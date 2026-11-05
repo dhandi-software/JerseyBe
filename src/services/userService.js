@@ -250,23 +250,6 @@ const deleteSingleUserInTx = async (tx, userId) => {
         data: { designerId: null, isWorking: false }
     });
 
-    await tx.message.deleteMany({
-        where: {
-            OR: [
-                { senderId: id },
-                { receiverId: id }
-            ]
-        }
-    });
-
-    await tx.chatRoomMember.deleteMany({
-        where: { userId: id }
-    });
-
-    await tx.chatRoom.deleteMany({
-        where: { adminId: id }
-    });
-
     if (user.role === 'customer') {
         await tx.customer.deleteMany({ where: { userId: id } });
     } else {
@@ -351,30 +334,6 @@ const getDesigners = async () => {
     }));
 };
 
-const getAllChatCustomers = async () => {
-    return await prisma.user.findMany({
-        where: {
-            role: 'customer',
-            OR: [
-                { sentMessages: { some: {} } },
-                { receivedMessages: { some: {} } }
-            ]
-        },
-        select: {
-            id: true,
-            username: true,
-            email: true,
-            role: true,
-            photo: true,
-            bio: true,
-            createdAt: true,
-            updatedAt: true,
-            customer: true
-        },
-        orderBy: { id: 'desc' }
-    });
-};
-
 module.exports = {
     getProfile,
     updateProfile,
@@ -387,6 +346,5 @@ module.exports = {
     updateUser,
     deleteUser,
     deleteUsersBatch,
-    getDesigners,
-    getAllChatCustomers
+    getDesigners
 };

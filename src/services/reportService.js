@@ -222,43 +222,11 @@ const getDashboardStats = async ({ year, month }) => {
         .slice(0, 5)
         .map(o => ({ name: o.resolvedCustomerName }));
 
-    const recentMessages = await prisma.message.findMany({
-        where: {
-            OR: [
-                { sender: { role: 'customer' }, receiver: { role: 'admin' } },
-                { sender: { role: 'admin' }, receiver: { role: 'customer' } }
-            ]
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-        include: {
-            sender: { select: { id: true, username: true, email: true, role: true, customer: true } },
-            receiver: { select: { id: true, username: true, email: true, role: true, customer: true } }
-        }
-    });
-
-    const recentChattersMap = new Map();
-    recentMessages.forEach(msg => {
-        if (msg.sender?.customer && !recentChattersMap.has(msg.sender.id)) {
-            recentChattersMap.set(msg.sender.id, {
-                lastMessageAt: msg.createdAt,
-                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru'))
-            });
-        }
-        if (msg.receiver?.customer && !recentChattersMap.has(msg.receiver.id)) {
-            recentChattersMap.set(msg.receiver.id, {
-                lastMessageAt: msg.createdAt,
-                lastMessageContent: msg.content || (msg.attachmentName ? `📎 ${msg.attachmentName}` : (msg.attachmentUrl ? '📎 Lampiran' : 'Pesan baru'))
-            });
-        }
-    });
-
     const uniqueOrderCustomersMap = new Map();
     enrichedOrders.forEach(order => {
         if (!isValidCustomerName(order.resolvedCustomerName)) return;
         const key = order.resolvedCustomerName.toUpperCase();
         if (!uniqueOrderCustomersMap.has(key)) {
-            const chatInfo = order.customerAccountUser ? recentChattersMap.get(order.customerAccountUser.id) : null;
             const productTitle = order.details?.[0]?.productTitle;
             const sourceLabel = order.isAdminOrder ? 'Pesanan Admin' : 'Pesanan Customer';
             uniqueOrderCustomersMap.set(key, {
@@ -267,8 +235,8 @@ const getDashboardStats = async ({ year, month }) => {
                 nama: order.resolvedCustomerName,
                 email: order.customerAccountUser?.email || '',
                 isAdminOrder: order.isAdminOrder,
-                lastMessageAt: chatInfo?.lastMessageAt || null,
-                lastMessageContent: chatInfo?.lastMessageContent || undefined,
+                lastMessageAt: null,
+                lastMessageContent: undefined,
                 category: productTitle ? `${productTitle} • ${sourceLabel}` : sourceLabel
             });
         }
@@ -277,38 +245,8 @@ const getDashboardStats = async ({ year, month }) => {
     const totalCustomer = uniqueOrderCustomersMap.size;
     const recentCustomers = Array.from(uniqueOrderCustomersMap.values()).slice(0, 5);
 
-    const recentChatsData = await prisma.message.findMany({
-        where: {
-            OR: [
-                { sender: { role: 'admin' } },
-                { receiver: { role: 'admin' } }
-            ]
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 3,
-        include: {
-            sender: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } },
-            receiver: { select: { id: true, username: true, role: true, customer: { select: { nama: true } }, staff: { select: { nama: true } } } }
-        }
-    });
-
-    const recentChats = recentChatsData.map(chat => {
-        const isSenderAdmin = chat.sender?.role?.toLowerCase() === 'admin';
-        const partnerId = isSenderAdmin ? chat.receiverId : chat.senderId;
-        return {
-            id: chat.id,
-            content: chat.content || (chat.attachmentName ? `📎 ${chat.attachmentName}` : (chat.attachmentUrl ? '📎 Lampiran file' : '')),
-            senderName: chat.sender?.customer?.nama || chat.sender?.staff?.nama || chat.sender?.username || 'Unknown',
-            senderRole: chat.sender?.role,
-            createdAt: chat.createdAt,
-            isRead: chat.isRead,
-            partnerId
-        };
-    });
-
-    const totalUnreadChat = await prisma.message.count({
-        where: { isRead: false, receiver: { role: 'admin' } }
-    });
+    const recentChats = [];
+    const totalUnreadChat = 0;
 
     let responseSalesData = { daily: dailySales, monthly: monthlySales, yearly: yearlySales, lifetime: lifetimeSales };
 

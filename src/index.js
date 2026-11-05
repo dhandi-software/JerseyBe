@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const http = require('http');
-const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const errorHandler = require('./middleware/errorHandler');
@@ -89,10 +88,11 @@ app.use('/uploads', express.static(uploadsDir, { dotfiles: 'ignore', index: fals
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
-app.use('/api/chat', require('./routes/chatRoutes'));
+app.use('/api/upload', require('./routes/uploadRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/bahan-baju', require('./routes/bahanBajuRoutes'));
+app.use('/api/storage-locations', require('./routes/storageLocationRoutes'));
 
 // Health Check
 app.get('/', (req, res) => {
@@ -102,23 +102,7 @@ app.get('/', (req, res) => {
 // Central error handler
 app.use(errorHandler);
 
-// Create HTTP server and attach Socket.io
 const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: (origin, callback) => {
-            if (isOriginAllowed(origin)) {
-                return callback(null, true);
-            }
-            return callback(new Error('Blocked by Socket CORS policy'));
-        },
-        credentials: true,
-        methods: ["GET", "POST"]
-    }
-});
-
-app.set('io', io);
-require('./socket')(io);
 
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

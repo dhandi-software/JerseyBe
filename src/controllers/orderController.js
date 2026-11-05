@@ -27,10 +27,11 @@ const createOrder = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
     try {
-        const { search, q, status } = req.query;
+        const { search, q, status, storageLocationId } = req.query;
         const formattedOrders = await orderService.getAllOrders({
             search: search || q,
-            status
+            status,
+            storageLocationId
         });
         res.json(formattedOrders);
     } catch (error) {
@@ -117,6 +118,26 @@ const updatePayment = async (req, res) => {
         res.json(updated);
     } catch (error) {
         handleControllerError(res, 'Failed to update payment details:', error, 'Failed to update payment details');
+    }
+};
+
+const addPaymentInstallment = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await orderService.addPaymentInstallment(id, req.body, req.user);
+        res.status(201).json(result);
+    } catch (error) {
+        handleControllerError(res, 'Failed to add payment installment:', error, 'Failed to add payment installment');
+    }
+};
+
+const getPaymentInstallments = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const installments = await orderService.getPaymentInstallments(id, req.user);
+        res.json(installments);
+    } catch (error) {
+        handleControllerError(res, 'Failed to fetch payment installments:', error, 'Failed to fetch payment installments');
     }
 };
 
@@ -345,6 +366,23 @@ const deleteOrderDetail = async (req, res) => {
     }
 };
 
+const updateOrderStorageLocation = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { storageLocationId } = req.body;
+        const updatedOrder = await orderService.assignOrderStorageLocation(id, storageLocationId);
+        res.json({
+            status: 'success',
+            data: updatedOrder,
+            message: storageLocationId !== null && storageLocationId !== undefined && storageLocationId !== ''
+                ? 'Lokasi penyimpanan pesanan berhasil ditetapkan'
+                : 'Lokasi penyimpanan pesanan berhasil dihapus'
+        });
+    } catch (error) {
+        handleControllerError(res, 'Failed to update order storage location:', error, 'Gagal memperbarui lokasi penyimpanan pesanan');
+    }
+};
+
 module.exports = {
     createOrder,
     getAllOrders,
@@ -355,6 +393,8 @@ module.exports = {
     updateOrder,
     uploadMockup,
     updatePayment,
+    addPaymentInstallment,
+    getPaymentInstallments,
     approveDesign,
     unapproveDesign,
     revisiDesign,
@@ -375,5 +415,6 @@ module.exports = {
     updateOrderDetail,
     addOrderDetail,
     deleteOrderDetail,
-    updateVideoNotes
+    updateVideoNotes,
+    updateOrderStorageLocation
 };

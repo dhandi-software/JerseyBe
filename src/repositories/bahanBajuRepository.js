@@ -36,41 +36,41 @@ function withUuid(bahan) {
     };
 }
 
-const findAllBahan = async (orderBy = { createdAt: 'desc' }) => {
-    const rows = await prisma.bahanBaju.findMany({ orderBy });
+const findAllBahan = async (orderBy = { createdAt: 'desc' }, tx = prisma) => {
+    const rows = await tx.bahanBaju.findMany({ orderBy });
     return rows.map(withUuid);
 };
 
-const findBahanById = async (idOrUuid) => {
+const findBahanById = async (idOrUuid, tx = prisma) => {
     const raw = String(idOrUuid || '').trim();
     if (/^\d+$/.test(raw)) {
-        const found = await prisma.bahanBaju.findUnique({
+        const found = await tx.bahanBaju.findUnique({
             where: { id: parseInt(raw, 10) }
         });
         return withUuid(found);
     }
 
-    const all = await prisma.bahanBaju.findMany();
+    const all = await tx.bahanBaju.findMany();
     const matched = all.find((b) => generateBahanUuid(b.id, b.uuid) === raw);
     return withUuid(matched || null);
 };
 
-const findBahanByIds = async (ids) => {
-    const rows = await prisma.bahanBaju.findMany({
+const findBahanByIds = async (ids, tx = prisma) => {
+    const rows = await tx.bahanBaju.findMany({
         where: { id: { in: ids } }
     });
     return rows.map(withUuid);
 };
 
-const createBahan = async (data) => {
-    const created = await prisma.bahanBaju.create({ data });
+const createBahan = async (data, tx = prisma) => {
+    const created = await tx.bahanBaju.create({ data });
     return withUuid(created);
 };
 
-const updateBahan = async (idOrUuid, data) => {
+const updateBahan = async (idOrUuid, data, tx = prisma) => {
     let targetId = parseInt(idOrUuid, 10);
     if (!/^\d+$/.test(String(idOrUuid || '').trim())) {
-        const existing = await findBahanById(idOrUuid);
+        const existing = await findBahanById(idOrUuid, tx);
         if (!existing) {
             const err = new Error('Not found');
             err.statusCode = 404;
@@ -79,17 +79,17 @@ const updateBahan = async (idOrUuid, data) => {
         targetId = existing.id;
     }
 
-    const updated = await prisma.bahanBaju.update({
+    const updated = await tx.bahanBaju.update({
         where: { id: targetId },
         data
     });
     return withUuid(updated);
 };
 
-const deleteBahan = async (idOrUuid) => {
+const deleteBahan = async (idOrUuid, tx = prisma) => {
     let targetId = parseInt(idOrUuid, 10);
     if (!/^\d+$/.test(String(idOrUuid || '').trim())) {
-        const existing = await findBahanById(idOrUuid);
+        const existing = await findBahanById(idOrUuid, tx);
         if (!existing) {
             const err = new Error('Not found');
             err.statusCode = 404;
@@ -98,20 +98,33 @@ const deleteBahan = async (idOrUuid) => {
         targetId = existing.id;
     }
 
-    return await prisma.bahanBaju.delete({
+    return await tx.bahanBaju.delete({
         where: { id: targetId }
     });
 };
 
-const createHistory = async (data) => {
-    return await prisma.bahanBajuHistory.create({ data });
+const createHistory = async (data, tx = prisma) => {
+    return await tx.bahanBajuHistory.create({ data });
 };
 
-const findHistory = async (where = {}, include = { bahan: true }, orderBy = { createdAt: 'desc' }) => {
-    return await prisma.bahanBajuHistory.findMany({
-        where,
-        include,
-        orderBy
+const findHistory = async (where = {}, include = { bahan: true }, orderBy = { createdAt: 'desc' }, tx = prisma) => {
+    const query = { where, orderBy };
+    if (include) query.include = include;
+    return await tx.bahanBajuHistory.findMany(query);
+};
+
+const findHistoryById = async (id, include = { bahan: true }, tx = prisma) => {
+    const query = {
+        where: { id: parseInt(id, 10) }
+    };
+    if (include) query.include = include;
+    return await tx.bahanBajuHistory.findUnique(query);
+};
+
+const updateHistory = async (id, data, tx = prisma) => {
+    return await tx.bahanBajuHistory.update({
+        where: { id: parseInt(id, 10) },
+        data
     });
 };
 
@@ -124,5 +137,7 @@ module.exports = {
     updateBahan,
     deleteBahan,
     createHistory,
-    findHistory
+    findHistory,
+    findHistoryById,
+    updateHistory
 };
