@@ -33,7 +33,13 @@ const authenticateToken = (req, res, next) => {
                     id: true,
                     username: true,
                     email: true,
-                    role: true
+                    role: true,
+                    staff: {
+                        select: {
+                            nama: true,
+                            position: true
+                        }
+                    }
                 }
             });
 

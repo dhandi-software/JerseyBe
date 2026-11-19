@@ -143,7 +143,7 @@ const createOrder = async ({
  * Query orders with multi-field search and filters, resolving customer account names
  * and formatting payment ledger states.
  */
-const getAllOrders = async ({ search, status, storageLocationId } = {}) => {
+const getAllOrders = async ({ search, searchScope, status, storageLocationId } = {}) => {
     let matchingUserIds = [];
     if (search && search.trim()) {
         matchingUserIds = await userRepository.findCustomerUserIdsByQuery(search.trim());
@@ -151,6 +151,7 @@ const getAllOrders = async ({ search, status, storageLocationId } = {}) => {
 
     const orders = await orderRepository.findOrdersWithFilters({
         search,
+        searchScope,
         status,
         storageLocationId,
         matchingUserIds
@@ -254,61 +255,6 @@ const updateOrderStatus = async (id, { status, designerId, isWorking, paymentTyp
 
         const updated = await orderRepository.updateOrder(orderIdInt, dataUpdate, null, tx);
 
-        if (currentOrder.status === 'MENUNGGU' && status === 'DESAIN') {
-            const stockToReduce = {};
-            const uniqueProductIds = [...new Set(currentOrder.details.map(d => parseInt(d.productId, 10)))].filter(Boolean);
-            const dbBahans = await bahanBajuRepository.findBahanByIds(uniqueProductIds, tx);
-            const bahanMap = {};
-            dbBahans.forEach(b => {
-                bahanMap[b.id] = b;
-            });
-
-            currentOrder.details.forEach(detail => {
-                const { size, sleeve } = parseSizeAndSleeve(detail.playerSize);
-                const bId = parseInt(detail.productId, 10);
-                if (!bId || isNaN(bId) || !bahanMap[bId]) return;
-
-                const rasio = bahanMap[bId]?.rasioKonversi || 2.5;
-                const s = size.toUpperCase().trim();
-                const isLongSleeve = sleeve === 'Lengan Panjang';
-                const isBigSize = ['3XL', '4XL', '5XL', '6XL', 'XXXL', 'XXXXL'].includes(s);
-
-                let meterReq = 0;
-                if (isLongSleeve) {
-                    meterReq = isBigSize ? 2.5 : 1.25;
-                } else {
-                    meterReq = isBigSize ? 1.25 : 0.8333;
-                }
-
-                const kgReq = meterReq / rasio;
-                stockToReduce[bId] = (stockToReduce[bId] || 0) + kgReq;
-            });
-
-            for (const [productId, kgToDecrement] of Object.entries(stockToReduce)) {
-                const idInt = parseInt(productId, 10);
-                const bahan = bahanMap[idInt];
-
-                if (bahan) {
-                    const newKuantitas = Math.max(0, bahan.kuantitasKg - kgToDecrement);
-                    const newStatus = newKuantitas <= 0 ? 'Habis' : bahan.status;
-
-                    await bahanBajuRepository.updateBahan(idInt, {
-                        kuantitasKg: parseFloat(newKuantitas.toFixed(4)),
-                        status: newStatus
-                    }, tx);
-
-                    await bahanBajuRepository.createHistory({
-                        bahanId: idInt,
-                        namaBahan: bahan.nama,
-                        aksi: 'KURANG',
-                        jumlah: parseFloat(kgToDecrement.toFixed(4)),
-                        stokAkhir: parseFloat(newKuantitas.toFixed(4)),
-                        keterangan: `Ketersediaan berkurang otomatis (Order ${currentOrder.orderId} diterima)`
-                    }, tx);
-                }
-            }
-        }
-
         return updated;
     });
 };
@@ -320,6 +266,7 @@ const getOrdersByCustomer = async (customerId) => {
     const cId = parseInt(customerId, 10);
     const orders = await orderRepository.findOrdersByCustomerId(cId, {
         details: true,
+        payments: { orderBy: { installmentNo: 'asc' } },
         designer: { select: { staff: { select: { nama: true } }, username: true } }
     }, { createdAt: 'desc' });
 
@@ -344,6 +291,7 @@ const getOrdersByDesigner = async (designerId) => {
     const dId = parseInt(designerId, 10);
     const orders = await orderRepository.findOrdersByDesignerId(dId, {
         details: true,
+        payments: { orderBy: { installmentNo: 'asc' } },
         designer: { select: { staff: { select: { nama: true } }, username: true } }
     }, { createdAt: 'desc' });
 
@@ -351,17 +299,26 @@ const getOrdersByDesigner = async (designerId) => {
     const users = await userRepository.findUsersByIds(userIds, {
         id: true,
         username: true,
-        customer: { select: { nama: true } }
+        role: true,
+        customer: { select: { nama: true, phone: true } }
     });
 
     const userMap = {};
+    const phoneMap = {};
     users.forEach(u => {
-        userMap[u.id] = u.customer?.nama || u.username;
+        const role = (u.role || '').toLowerCase();
+        if (role === 'customer') {
+            userMap[u.id] = u.customer?.nama || u.username;
+            if (u.customer?.phone) {
+                phoneMap[u.id] = u.customer.phone;
+            }
+        }
     });
 
     return orders.map(o => normalizeOrderPaymentFields({
         ...o,
-        customerName: o.customerName || userMap[o.customerId] || 'Guest User',
+        customerName: o.customerName || userMap[o.customerId] || 'Pelanggan',
+        customerPhone: o.customerPhone || phoneMap[o.customerId] || null,
         designerName: o.designer ? (o.designer.staff?.nama || o.designer.username) : 'Belum Ada'
     }));
 };
@@ -373,6 +330,7 @@ const getOrdersByDesigner = async (designerId) => {
 const trackOrder = async (orderId, callerUser = null) => {
     const order = await orderRepository.findOrderByOrderIdCaseInsensitive(orderId, {
         details: true,
+        payments: { orderBy: { installmentNo: 'asc' } },
         designer: { select: { staff: { select: { nama: true } }, username: true } }
     });
 

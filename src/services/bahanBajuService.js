@@ -1,4 +1,3 @@
-const prisma = require('../config/prisma');
 const bahanBajuRepository = require('../repositories/bahanBajuRepository');
 
 const getAllBahan = async () => {
@@ -18,14 +17,14 @@ const getReturBahan = async () => {
     }, { bahan: true }, { createdAt: 'desc' });
 };
 
-const createBahan = async ({ nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, actor, imageUrl, buktiNotaUrl }) => {
+const createBahan = async ({ nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, actor, customerName, imageUrl, buktiNotaUrl }) => {
     const parsedKuantitas = parseFloat(kuantitasKg);
     const finalKuantitas = isNaN(parsedKuantitas) ? 0 : parsedKuantitas;
 
     const parsedRasio = parseFloat(rasioKonversi);
     const finalRasio = isNaN(parsedRasio) ? 1.0 : parsedRasio;
 
-    const finalStatus = status || (finalKuantitas <= 0 ? 'Habis' : 'Tersedia');
+    const finalStatus = status || 'Tersedia';
 
     const parsedHarga = parseFloat(harga);
     const finalHarga = isNaN(parsedHarga) ? 0 : parsedHarga;
@@ -55,13 +54,15 @@ const createBahan = async ({ nama, deskripsi, kuantitasKg, rasioKonversi, status
         hargaJual: newBahan.harga,
         totalNilai: newBahan.hargaBeli || 0,
         keterangan: 'Bahan baju baru ditambahkan',
-        actor: actor || 'System'
+        actor: actor || 'System',
+        customerName: customerName || actor || 'Tim Internal',
+        buktiNotaUrl: newBahan.buktiNotaUrl || null
     });
 
     return newBahan;
 };
 
-const updateBahan = async (id, { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, keterangan_ubah, deleteImage, deleteBuktiNota, actor, newUploadedImageUrl, newUploadedBuktiNotaUrl }) => {
+const updateBahan = async (id, { nama, deskripsi, kuantitasKg, rasioKonversi, status, harga, hargaBeli, keterangan_ubah, deleteImage, deleteBuktiNota, actor, customerName, newUploadedImageUrl, newUploadedBuktiNotaUrl }) => {
     const existingBahan = await bahanBajuRepository.findBahanById(id);
     if (!existingBahan) {
         const error = new Error('Not found');
@@ -75,7 +76,7 @@ const updateBahan = async (id, { nama, deskripsi, kuantitasKg, rasioKonversi, st
     const parsedRasio = parseFloat(rasioKonversi);
     const updatedRasio = isNaN(parsedRasio) ? existingBahan.rasioKonversi : parsedRasio;
 
-    const updatedStatus = status || (updatedKuantitas <= 0 ? 'Habis' : 'Tersedia');
+    const updatedStatus = status || existingBahan.status || 'Tersedia';
 
     const parsedHarga = parseFloat(harga);
     const updatedHarga = isNaN(parsedHarga) ? existingBahan.harga : parsedHarga;
@@ -124,27 +125,47 @@ const updateBahan = async (id, { nama, deskripsi, kuantitasKg, rasioKonversi, st
             hargaJual: updatedBahan.harga,
             totalNilai: isTambah ? Math.max(0, (updatedBahan.hargaBeli || 0) - (existingBahan.hargaBeli || 0)) : 0,
             keterangan: keterangan_ubah || (isTambah ? 'Penambahan ketersediaan' : 'Pengurangan ketersediaan'),
-            actor: actor || 'System'
+            actor: actor || 'System',
+            customerName: customerName || actor || 'Tim Internal',
+            buktiNotaUrl: isTambah ? (updatedBahan.buktiNotaUrl || null) : null
         });
-    } else if (nama !== existingBahan.nama || deskripsi !== existingBahan.deskripsi || newImageUrl !== existingBahan.imageUrl || updatedRasio !== existingBahan.rasioKonversi || updatedStatus !== existingBahan.status) {
+    } else if (
+        nama !== existingBahan.nama ||
+        deskripsi !== existingBahan.deskripsi ||
+        newImageUrl !== existingBahan.imageUrl ||
+        newBuktiNotaUrl !== existingBahan.buktiNotaUrl ||
+        updatedRasio !== existingBahan.rasioKonversi ||
+        updatedStatus !== existingBahan.status ||
+        updatedHarga !== existingBahan.harga ||
+        updatedHargaBeli !== (existingBahan.hargaBeli || 0)
+    ) {
+        const deltaModal = Math.max(0, (updatedBahan.hargaBeli || 0) - (existingBahan.hargaBeli || 0));
+        const isModalIncrease = deltaModal > 0;
+        const defaultKeterangan = isModalIncrease
+            ? 'Penambahan modal bahan baju'
+            : updatedStatus !== existingBahan.status
+                ? `Status ketersediaan diubah dari ${existingBahan.status} menjadi ${updatedStatus}`
+                : 'Pembaruan detail bahan baju';
         await bahanBajuRepository.createHistory({
             bahanId: existingBahan.id,
             namaBahan: updatedBahan.nama,
-            aksi: 'UBAH',
+            aksi: isModalIncrease ? 'TAMBAH' : 'UBAH',
             jumlah: 0,
             stokAkhir: updatedKuantitas,
             hargaBeli: updatedBahan.hargaBeli,
             hargaJual: updatedBahan.harga,
-            totalNilai: 0,
-            keterangan: 'Pembaruan detail ketersediaan/rasio/status/gambar',
-            actor: actor || 'System'
+            totalNilai: deltaModal,
+            keterangan: keterangan_ubah || defaultKeterangan,
+            actor: actor || 'System',
+            customerName: customerName || actor || 'Tim Internal',
+            buktiNotaUrl: isModalIncrease ? (newUploadedBuktiNotaUrl || updatedBahan.buktiNotaUrl || null) : (newUploadedBuktiNotaUrl || null)
         });
     }
 
     return updatedBahan;
 };
 
-const deleteBahan = async (id, actor) => {
+const deleteBahan = async (id, actor, customerName) => {
     const existingBahan = await bahanBajuRepository.findBahanById(id);
     if (!existingBahan) {
         const error = new Error('Not found');
@@ -161,8 +182,9 @@ const deleteBahan = async (id, actor) => {
         hargaBeli: existingBahan.hargaBeli,
         hargaJual: existingBahan.harga,
         totalNilai: 0,
-        keterangan: `Menghapus bahan ${existingBahan.nama} (Ketersediaan terakhir: ${existingBahan.kuantitasKg} kg)`,
-        actor: actor || 'System'
+        keterangan: `Menghapus bahan ${existingBahan.nama} (Status terakhir: ${existingBahan.status})`,
+        actor: actor || 'System',
+        customerName: customerName || actor || 'Tim Internal'
     });
 
     await bahanBajuRepository.deleteBahan(id);

@@ -8,10 +8,11 @@
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
+    "pdfkit": "^0.18.0",
     "sharp": "^0.35.5"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test tests/finance.test.js && node tests/adversarial_storage_location_test.js",
     "dev": "nodemon src/index.js",
     "start": "npx prisma db push --accept-data-loss && node prisma/seed.js && node src/index.js",
     "seed": "node prisma/seed.js"

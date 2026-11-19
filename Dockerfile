@@ -17,7 +17,7 @@ RUN npx prisma generate
 COPY . .
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV CHOKIDAR_USEPOLLING=true
 ENV NODEMON_LEGACY_WATCH=true

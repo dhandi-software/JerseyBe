@@ -94,6 +94,12 @@ const addPaymentInstallment = async (id, paymentData = {}, callerUser = null) =>
             throw error;
         }
 
+        if (!paymentData.proofUrl || !String(paymentData.proofUrl).trim()) {
+            const error = new Error('Bukti pembayaran (Foto / PDF) wajib diunggah');
+            error.statusCode = 400;
+            throw error;
+        }
+
         const installmentNo = existingPayments.length + 1;
         const isSettled = (currentRemaining - numAmount === 0);
         const resolvedStage = isSettled ? 'PELUNASAN' : (paymentData.stage || 'DP');

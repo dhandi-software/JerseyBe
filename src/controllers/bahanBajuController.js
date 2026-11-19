@@ -2,6 +2,23 @@ const bahanBajuService = require('../services/bahanBajuService');
 
 const INTERNAL_STAFF_ROLES = ['admin', 'manager', 'gudang', 'desain'];
 
+const ROLE_ACTOR_LABEL = {
+    admin: 'Admin',
+    desain: 'Tim Desain',
+    gudang: 'Gudang',
+    manager: 'Manager',
+};
+
+const resolveBahanActor = (req, fallbackActor) => {
+    const role = (req.user?.role || '').toLowerCase();
+    const roleLabel = ROLE_ACTOR_LABEL[role];
+    const userName = req.user?.staff?.nama || req.user?.username || fallbackActor || null;
+    return {
+        actor: roleLabel || fallbackActor || 'System',
+        customerName: userName || roleLabel || 'Tim Internal',
+    };
+};
+
 const getAllBahan = async (req, res) => {
     try {
         const bahan = await bahanBajuService.getAllBahan();
@@ -45,6 +62,7 @@ const createBahan = async (req, res) => {
     const buktiNotaUrl = req.files && req.files.buktiNota ? `/uploads/${req.files.buktiNota[0].filename}` : null;
 
     try {
+        const { actor: resolvedActor, customerName } = resolveBahanActor(req, actor);
         const newBahan = await bahanBajuService.createBahan({
             nama,
             deskripsi,
@@ -53,7 +71,8 @@ const createBahan = async (req, res) => {
             status,
             harga,
             hargaBeli,
-            actor,
+            actor: resolvedActor,
+            customerName,
             imageUrl,
             buktiNotaUrl
         });
@@ -85,6 +104,7 @@ const updateBahan = async (req, res) => {
     const newUploadedBuktiNotaUrl = req.files && req.files.buktiNota ? `/uploads/${req.files.buktiNota[0].filename}` : undefined;
 
     try {
+        const { actor: resolvedActor, customerName } = resolveBahanActor(req, actor);
         const updatedBahan = await bahanBajuService.updateBahan(id, {
             nama,
             deskripsi,
@@ -96,7 +116,8 @@ const updateBahan = async (req, res) => {
             keterangan_ubah,
             deleteImage,
             deleteBuktiNota,
-            actor,
+            actor: resolvedActor,
+            customerName,
             newUploadedImageUrl,
             newUploadedBuktiNotaUrl
         });
@@ -116,7 +137,8 @@ const deleteBahan = async (req, res) => {
     const { actor } = req.query;
 
     try {
-        const result = await bahanBajuService.deleteBahan(id, actor);
+        const { actor: resolvedActor, customerName } = resolveBahanActor(req, actor);
+        const result = await bahanBajuService.deleteBahan(id, resolvedActor, customerName);
         res.json({ status: 'success', message: result.message });
     } catch (error) {
         console.error(error);

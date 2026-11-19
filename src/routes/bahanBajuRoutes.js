@@ -20,8 +20,8 @@ router.use(authenticateToken);
 router.get('/history', authorizeRoles('admin', 'gudang', 'manager', 'desain'), getHistory);
 router.get('/retur', authorizeRoles('admin', 'gudang', 'manager', 'desain'), getReturBahan);
 
-router.post('/', authorizeRoles('admin', 'gudang'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), createBahan);
-router.put('/:id', authorizeRoles('admin', 'gudang'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), updateBahan);
-router.delete('/:id', authorizeRoles('admin', 'gudang'), deleteBahan);
+router.post('/', authorizeRoles('admin', 'gudang', 'desain'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), createBahan);
+router.put('/:id', authorizeRoles('admin', 'gudang', 'desain'), upload.fields([{ name: 'image', maxCount: 1 }, { name: 'buktiNota', maxCount: 1 }]), updateBahan);
+router.delete('/:id', authorizeRoles('admin', 'gudang', 'desain'), deleteBahan);
 
 module.exports = router;

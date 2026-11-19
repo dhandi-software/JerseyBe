@@ -172,8 +172,7 @@ const getDashboardStats = async (req, res) => {
 
 const getOmsetReport = async (req, res) => {
     try {
-        const { startDate, endDate } = req.query;
-        const report = await reportService.getOmsetReport({ startDate, endDate });
+        const report = await reportService.getOmsetReport(req.query);
 
         res.status(200).json({
             status: 'success',
@@ -181,7 +180,11 @@ const getOmsetReport = async (req, res) => {
         });
     } catch (error) {
         console.error('Error getOmsetReport:', error);
-        res.status(500).json({ message: 'Internal Server Error' });
+        const statusCode = error.statusCode || 500;
+        res.status(statusCode).json({
+            status: 'error',
+            message: error.message || 'Internal Server Error'
+        });
     }
 };
 

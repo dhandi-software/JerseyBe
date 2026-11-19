@@ -48,6 +48,7 @@ app.use(cors({
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    exposedHeaders: ['Content-Disposition'],
     optionsSuccessStatus: 200
 }));
 app.use(express.json({ limit: '2mb' }));
@@ -60,10 +61,20 @@ app.use('/uploads', (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
 
-    const safePath = path.normalize(req.path).replace(/^(\.\.[\/\\])+/, '');
-    const resolvedPath = path.resolve(uploadsDir, '.' + safePath);
+    let decodedPath;
+    try {
+        decodedPath = decodeURIComponent(req.path);
+    } catch {
+        return res.status(400).json({ error: 'Bad Request: Malformed file path' });
+    }
+    if (decodedPath.includes('\0')) {
+        return res.status(400).json({ error: 'Bad Request: Invalid file path' });
+    }
 
-    if (!resolvedPath.startsWith(uploadsDir)) {
+    const relPath = decodedPath.replace(/\\/g, '/').replace(/^\/+/, '');
+    const resolvedPath = path.resolve(uploadsDir, relPath);
+
+    if (resolvedPath !== uploadsDir && !resolvedPath.startsWith(uploadsDir + path.sep)) {
         return res.status(403).json({ error: 'Forbidden: Invalid file path' });
     }
 
@@ -89,6 +100,7 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/user', require('./routes/userRoutes'));
 app.use('/api/profile', require('./routes/profileRoutes'));
 app.use('/api/upload', require('./routes/uploadRoutes'));
+app.use('/api/admin/finance', require('./routes/financeRoutes'));
 app.use('/api/admin', require('./routes/adminRoutes'));
 app.use('/api/orders', require('./routes/orderRoutes'));
 app.use('/api/bahan-baju', require('./routes/bahanBajuRoutes'));
@@ -104,6 +116,10 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
-server.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+    server.listen(PORT, () => {
+        console.log(`Server running on http://localhost:${PORT}`);
+    });
+}
+
+module.exports = { app, server };

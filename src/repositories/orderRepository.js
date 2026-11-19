@@ -73,7 +73,7 @@ const findOrders = async (where = {}, include = null, orderBy = { createdAt: 'de
     return await tx.jerseyOrder.findMany(query);
 };
 
-const findOrdersWithFilters = async ({ search, status, storageLocationId, matchingUserIds = [] } = {}, tx = prisma) => {
+const findOrdersWithFilters = async ({ search, searchScope, status, storageLocationId, matchingUserIds = [] } = {}, tx = prisma) => {
     const where = {};
 
     if (status && status !== 'ALL' && status !== 'SEMUA') {
@@ -98,32 +98,39 @@ const findOrdersWithFilters = async ({ search, status, storageLocationId, matchi
 
     if (search && search.trim()) {
         const queryText = search.trim();
-        where.OR = [
-            { orderId: { contains: queryText, mode: 'insensitive' } },
-            { queueNumber: { contains: queryText, mode: 'insensitive' } },
-            { customerName: { contains: queryText, mode: 'insensitive' } },
-            ...(matchingUserIds.length > 0 ? [{ customerId: { in: matchingUserIds } }] : []),
-            {
-                details: {
-                    some: {
+        if (String(searchScope || '').toLowerCase() === 'customer') {
+            where.OR = [
+                { customerName: { contains: queryText, mode: 'insensitive' } },
+                ...(matchingUserIds.length > 0 ? [{ customerId: { in: matchingUserIds } }] : [])
+            ];
+        } else {
+            where.OR = [
+                { orderId: { contains: queryText, mode: 'insensitive' } },
+                { queueNumber: { contains: queryText, mode: 'insensitive' } },
+                { customerName: { contains: queryText, mode: 'insensitive' } },
+                ...(matchingUserIds.length > 0 ? [{ customerId: { in: matchingUserIds } }] : []),
+                {
+                    details: {
+                        some: {
+                            OR: [
+                                { playerName: { contains: queryText, mode: 'insensitive' } },
+                                { playerNumber: { contains: queryText, mode: 'insensitive' } },
+                                { playerSize: { contains: queryText, mode: 'insensitive' } },
+                                { productTitle: { contains: queryText, mode: 'insensitive' } }
+                            ]
+                        }
+                    }
+                },
+                {
+                    storageLocation: {
                         OR: [
-                            { playerName: { contains: queryText, mode: 'insensitive' } },
-                            { playerNumber: { contains: queryText, mode: 'insensitive' } },
-                            { playerSize: { contains: queryText, mode: 'insensitive' } },
-                            { productTitle: { contains: queryText, mode: 'insensitive' } }
+                            { name: { contains: queryText, mode: 'insensitive' } },
+                            { code: { contains: queryText, mode: 'insensitive' } }
                         ]
                     }
                 }
-            },
-            {
-                storageLocation: {
-                    OR: [
-                        { name: { contains: queryText, mode: 'insensitive' } },
-                        { code: { contains: queryText, mode: 'insensitive' } }
-                    ]
-                }
-            }
-        ];
+            ];
+        }
     }
 
     return await tx.jerseyOrder.findMany({

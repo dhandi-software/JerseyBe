@@ -27,9 +27,10 @@ const createOrder = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
     try {
-        const { search, q, status, storageLocationId } = req.query;
+        const { search, q, searchScope, status, storageLocationId } = req.query;
         const formattedOrders = await orderService.getAllOrders({
             search: search || q,
+            searchScope,
             status,
             storageLocationId
         });
